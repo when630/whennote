@@ -68,8 +68,8 @@ async function suggestClipboard() {
   if (!peek) return;
   if (peek.kind === 'image') {
     clipLabel.textContent = '클립보드에 이미지가 있어요';
-    clipPrev.textContent = '메인 창에서 열면 Ctrl+V로 붙일 수 있습니다';
-    clipKey.textContent = 'Ctrl ↵';
+    clipPrev.textContent = '붙이면 메모에 첨부됩니다';
+    clipKey.textContent = 'Ctrl V';
   } else {
     clipLabel.textContent = peek.kind === 'url' ? '클립보드에 링크가 있어요' : '클립보드에 글이 있어요';
     clipPrev.textContent = peek.preview;
@@ -99,6 +99,28 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return openInMain();
   }
+});
+
+// 이미지를 붙이면 파일로 먼저 저장하고 마크다운 참조를 넣는다. 메모에 묶이는 것은 저장될 때다(D-11 개정).
+input.addEventListener('paste', async (e) => {
+  const item = [...(e.clipboardData?.items ?? [])].find((it) => it.type.startsWith('image/'));
+  if (!item) return;
+  e.preventDefault();
+  const blob = item.getAsFile();
+  if (!blob) return;
+  const bytes = await blob.arrayBuffer();
+  const res = await window.whennote.attach(null, { type: item.type, bytes });
+  if (!res.ok) return showMsg('warn', res.error ?? '이미지를 붙이지 못했습니다', 2500);
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? start;
+  const before = input.value.slice(0, start);
+  const pad = before && !before.endsWith('\n') ? '\n' : '';
+  const insert = `${pad}${res.markdown}\n`;
+  input.value = before + insert + input.value.slice(end);
+  const cursor = before.length + insert.length;
+  input.setSelectionRange(cursor, cursor);
+  clipBox.hidden = true;
+  showMsg(res.large ? 'warn' : 'ok', res.large ? '10MB가 넘는 이미지입니다 — 저장은 됐습니다' : '이미지를 붙였습니다', 2000);
 });
 
 pinBtn.addEventListener('click', togglePin);

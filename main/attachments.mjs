@@ -55,6 +55,17 @@ export function createAttachments(dir) {
     }
   }
 
+  // olderThanMs보다 오래된 것만 — 붙여 놓고 아직 저장하지 않은 퀵캡처의 이미지를 치우지 않기 위해
+  function listOlderThan(olderThanMs, now = Date.now()) {
+    return list().filter((n) => {
+      try {
+        return now - fs.statSync(path.join(dir, n)).mtimeMs > olderThanMs;
+      } catch {
+        return false;
+      }
+    });
+  }
+
   // 내보내기: 이름들을 dest/attachments/ 로 복사. 없는 원본은 건너뛴다.
   function copyTo(names, destRoot) {
     const out = path.join(destRoot, ATTACH_DIR);
@@ -92,5 +103,5 @@ export function createAttachments(dir) {
     return imported;
   }
 
-  return { dir, save, resolve, remove, list, copyTo, importFrom };
+  return { dir, save, resolve, remove, list, listOlderThan, copyTo, importFrom };
 }

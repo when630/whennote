@@ -54,3 +54,13 @@ test('copyTo → importFrom 왕복. 이미 있는 파일은 덮지 않는다', (
   assert.equal(fs.readFileSync(dst.resolve(r2.file), 'utf8'), 'two');
   assert.deepEqual(dst.list().sort(), [r1.file, r2.file].sort());
 });
+
+test('listOlderThan은 mtime이 오래된 것만 — 방금 붙인 파일은 고아 정리에서 빠진다', () => {
+  const a = createAttachments(path.join(tmp(), 'attachments'));
+  const fresh = a.save(Buffer.from('f'), 'png');
+  const old = a.save(Buffer.from('o'), 'png');
+  const past = new Date(Date.now() - 3 * 86400_000);
+  fs.utimesSync(a.resolve(old.file), past, past);
+  assert.deepEqual(a.listOlderThan(86400_000), [old.file]);
+  assert.ok(!a.listOlderThan(86400_000).includes(fresh.file));
+});

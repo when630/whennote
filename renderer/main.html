@@ -159,11 +159,13 @@
   .keymap kbd { font-size: 11px; }
 
   /* ── 설정 패널 (Ctrl+,) — 키맵과 같은 오버레이 */
-  .panel.settings { width: 560px; }
-  .srow { display: grid; grid-template-columns: 140px 1fr; gap: 6px 16px; padding: 12px 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+  .panel.settings { width: 640px; }
+  .srow { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 6px 16px; padding: 12px 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
   .slabel { color: var(--text-secondary); padding-top: 4px; }
-  .sbody { display: flex; flex-direction: column; gap: 8px; color: var(--text-primary); }
-  .shint { color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.5; }
+  .sbody { display: flex; flex-direction: column; gap: 8px; color: var(--text-primary); min-width: 0; }
+  /* 파일 경로처럼 띄어쓰기 없는 긴 글은 칸을 넘지 않고 접는다 */
+  .shint { color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.5; overflow-wrap: anywhere; }
+  .sbody > div { overflow-wrap: anywhere; }
   .shint.warn { color: var(--warning); }
   .shint.ok { color: var(--success); }
   .sfoot { margin-top: 12px; text-align: right; }
@@ -178,7 +180,7 @@
     color: var(--text-secondary); font: inherit; font-size: var(--fs-xs); cursor: pointer;
   }
   .sbtn:hover { background: var(--bg-hover); color: var(--text-primary); }
-  .btnrow { display: flex; gap: 8px; }
+  .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
   .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
   .switch input { width: 16px; height: 16px; accent-color: var(--accent); }
 </style>

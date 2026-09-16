@@ -112,20 +112,31 @@ export function registerIpc(ctx) {
   ipcMain.handle('tag:list', guarded(() => ({ tags: ctx.store.listTags() })));
 
   // MAIN-08: 렌더러가 붙여넣기에서 잡은 이미지 바이트를 파일로 저장하고 본문에 넣을 마크다운을 돌려준다.
-  // 10MB를 넘으면 저장은 하되 large로 알린다(D-08 — 사용자 파일을 줄이지 않는다).
-  ipcMain.handle('note:attach', (_e, noteId, { type, bytes } = {}) => {
+  // 파일만 저장한다 — 어느 메모의 것인지는 본문이 저장될 때 `attachments/<이름>` 참조를 읽어 묶는다
+  // (store.insertCaptures·updateNote). 그래서 아직 id가 없는 퀵캡처 창에서도 붙일 수 있다(D-11 개정).
+  // 저장되지 않은 채 버려진 파일은 하루 뒤 고아 정리가 치운다. 10MB를 넘으면 저장은 하되 large로 알린다(D-08).
+  ipcMain.handle('note:attach', (_e, _noteId, { type, bytes } = {}) => {
     try {
       const ext = extensionFor(type);
       if (!ext) return { ok: false, error: '지원하지 않는 이미지 형식입니다' };
-      if (!bytes || !(bytes instanceof ArrayBuffer || bytes instanceof Uint8Array)) return { ok: false, error: '이미지 자료가 비어 있습니다' };
-      if (!ctx.store.getNote(noteId)) return { ok: false, error: '메모를 찾지 못했습니다' };
-      const saved = ctx.attachments.save(bytes, ext);
-      ctx.store.addAttachment(noteId, saved.file);
+      const buf = toBuffer(bytes);
+      if (!buf || !buf.length) return { ok: false, error: '이미지 자료가 비어 있습니다' };
+      const saved = ctx.attachments.save(buf, ext);
       return { ok: true, file: saved.file, large: saved.large, markdown: `![이미지](${ATTACH_DIR}/${saved.file})` };
     } catch {
       return { ok: false, error: '이미지를 저장하지 못했습니다' };
     }
   });
+
+  // IPC를 건너온 바이트는 ArrayBuffer·Uint8Array·Buffer 어느 것으로도 올 수 있다
+  function toBuffer(bytes) {
+    if (!bytes) return null;
+    if (Buffer.isBuffer(bytes)) return bytes;
+    if (bytes instanceof ArrayBuffer) return Buffer.from(new Uint8Array(bytes));
+    if (ArrayBuffer.isView(bytes)) return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    if (bytes?.type === 'Buffer' && Array.isArray(bytes.data)) return Buffer.from(bytes.data);
+    return null;
+  }
 
   // ── 내보내기·가져오기 (DATA-01~03). 대화상자 기본 위치는 Electron 43부터 다운로드 폴더다.
   const stamp = () => new Date().toISOString().slice(0, 10);

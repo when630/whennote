@@ -1,6 +1,7 @@
 // main/lifecycle.mjs — 앱 수명·창·트레이·단축키·ctx 생성. 구조는 WHENWORK main/lifecycle.mjs(34d5f3b)를
 // 따르고, 창 둘(메인·퀵캡처)의 크기·동작만 메모용이다(docs/03_기술_스펙 §7).
-import { app, BrowserWindow, Tray, Menu, globalShortcut, screen, Notification, protocol, net } from 'electron';
+import { app, BrowserWindow, Tray, Menu, globalShortcut, screen, Notification, protocol, net, clipboard, nativeImage } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { platform } from './platform/index.mjs';
@@ -32,6 +33,9 @@ function argValue(prefix) {
 }
 const SMOKE_DATA = argValue('--smoke-data=');
 const INJECT_CAPTURE = argValue('--inject-capture=');
+// --smoke --shot=<폴더>: 프로브 뒤에 실제 이미지를 클립보드에 넣고 본문에 붙여 보고, 메인 창(설정 열린 상태·
+// 편집 상태)과 퀵캡처 창의 스크린샷을 폴더에 남긴다. 눈으로 보지 않고는 못 잡는 레이아웃 문제용.
+const SHOT_DIR = argValue('--shot=');
 const CHECK_UPDATE = process.argv.includes('--check-update');
 
 // 첨부 이미지를 화면에 보여주는 스킴(D-11). 렌더러는 file://로 떠 있어 CSP 'self'가 첨부 폴더를
@@ -131,7 +135,8 @@ export function bootstrap() {
 
   // 스모크는 실사용 인스턴스와 부딪히지 않게 격리한다 — 안 그러면 단일 인스턴스 락에 걸려
   // 아무것도 검증하지 않고 종료 코드 0으로 끝난다.
-  if (SMOKE) app.setPath('userData', SMOKE_DATA || path.join(app.getPath('temp'), 'whennote-smoke'));
+  // --shot은 메모를 만들고 이미지를 붙이므로 자기 폴더 안에 데이터를 둔다 — 일반 스모크 폴더를 더럽히지 않게
+  if (SMOKE) app.setPath('userData', SMOKE_DATA || (SHOT_DIR ? path.join(SHOT_DIR, 'data') : path.join(app.getPath('temp'), 'whennote-smoke')));
 
   // app.quit()은 비동기 종료 요청일 뿐이다 — 여기서 멈춰 트레이·저장소·IPC를 만들지 않는다.
   if (!SMOKE && !app.requestSingleInstanceLock()) {
@@ -447,16 +452,100 @@ export function bootstrap() {
           } catch (err) {
             capture = [String(err?.message ?? err)];
           }
+          let shot = null;
+          if (SHOT_DIR) {
+            try {
+              shot = await takeShots(win, getCaptureWin(), SHOT_DIR);
+            } catch (err) {
+              shot = { error: String(err?.message ?? err) };
+            }
+          }
           const ok = probe?.view === true && probe?.list > 0 && probe?.errors?.length === 0 && capture?.length === 0;
           console.log(
             `SMOKE_${ok ? 'OK' : 'FAIL'} hotkey=${ctx.hotkeyOk} notes=${ctx.store.count()} renderer=${JSON.stringify(probe)} capture=${JSON.stringify(capture)}`
           );
+          if (shot) console.log(`SMOKE_SHOT ${JSON.stringify(shot)}`);
           ctx.quitting = true;
           app.exit(ok ? 0 : 1);
         }, 1200);
       });
     }
   });
+
+  // 스크린샷·붙여넣기 점검(--shot). 창을 잠깐 보이게 한다 — 숨은 창은 capturePage가 빈 그림을 낼 수 있다.
+  async function takeShots(win, cap, dir) {
+    fs.mkdirSync(dir, { recursive: true });
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+    const run = (w, js) => w.webContents.executeJavaScript(js);
+    const snap = async (w, name) => {
+      const img = await w.webContents.capturePage();
+      fs.writeFileSync(path.join(dir, name), img.toPNG());
+      return img.getSize();
+    };
+    const out = {};
+    win.showInactive();
+    await wait(200);
+
+    // 1) 메모 하나 만들어 열고, 실제 PNG를 클립보드에 넣은 뒤 본문에 붙여 본다(MAIN-08 경로 전체)
+    const seeded = saveCapture(ctx, '스크린샷 점검\n여기 아래에 이미지가 붙어야 한다');
+    await run(win, `openNote(${JSON.stringify(seeded.id)})`);
+    await wait(200);
+    const iconPath = path.join(ROOT, 'build', 'icon.png');
+    const img = nativeImage.createFromPath(iconPath);
+    out.imageSource = { exists: fs.existsSync(iconPath), empty: img.isEmpty(), size: img.getSize() };
+    const wt = clipboard.writeText('whennote-probe');
+    out.writeTextReturnsPromise = wt instanceof Promise;
+    await wt;
+    out.textReadBack = await clipboard.readText();
+    const wi = clipboard.writeImage(img);
+    out.writeImageReturnsPromise = wi instanceof Promise;
+    try {
+      await wi;
+    } catch (err) {
+      out.writeImageError = String(err?.message ?? err);
+    }
+    await wait(200);
+    out.clipboardFormats = await clipboard.availableFormats();
+    const rb = await clipboard.readImage();
+    out.clipboardReadBack = { empty: rb.isEmpty(), size: rb.getSize() };
+    // paste 이벤트가 실제로 무엇을 들고 오는지 — 여기서 갈리면 렌더러 핸들러가 아무 잘못이 없어도 안 붙는다
+    await run(
+      win,
+      `window.__pd = []; document.addEventListener('paste', (e) => { window.__pd.push({ active: document.activeElement && document.activeElement.id, types: [...e.clipboardData.types], items: [...e.clipboardData.items].map((i) => i.kind + ':' + i.type), files: e.clipboardData.files.length }); }, true);`
+    );
+    await run(win, "document.getElementById('body').focus()");
+    win.webContents.paste();
+    await wait(800);
+    out.pasteEvents = await run(win, 'window.__pd');
+    const body = await run(win, "document.getElementById('body').value");
+    out.pasteInserted = /!\[[^\]]*\]\(attachments\/[a-f0-9-]{36}\.png\)/.test(body);
+    out.attachmentFiles = ctx.attachments.list().length;
+    await run(win, 'flushSave()');
+    await wait(300);
+    out.editor = await snap(win, 'main-editor.png');
+    await run(win, 'togglePreview()');
+    await wait(400);
+    out.preview = await snap(win, 'main-preview.png');
+    await run(win, 'togglePreview()');
+
+    // 2) 설정 화면
+    await run(win, 'openSettings()');
+    await wait(400);
+    out.settingsOverflow = await run(
+      win,
+      `(() => { const p = document.querySelector('#settings .panel'); const bad = [...p.querySelectorAll('*')].filter((e) => e.scrollWidth > e.clientWidth + 1 && getComputedStyle(e).overflow !== 'auto').map((e) => (e.id || e.className || e.tagName) + ':' + e.scrollWidth + '>' + e.clientWidth); return bad.slice(0, 8); })()`
+    );
+    out.settings = await snap(win, 'main-settings.png');
+    await run(win, 'closeSettings()');
+
+    // 3) 퀵캡처 창
+    cap.showInactive();
+    await wait(300);
+    out.capture = await snap(cap, 'capture.png');
+    cap.hide();
+    win.hide();
+    return out;
+  }
 
   app.on('before-quit', () => {
     ctx.quitting = true;

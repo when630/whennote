@@ -10,7 +10,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { toChoseong, parseQuery, splitTerms, ftsMatch, likePattern, makeSnippet } from './search.mjs';
 import { titleOf, extractTags, extractLinks } from './links.mjs';
-import { EXPORT_VERSION, validateExport } from './export.mjs';
+import { EXPORT_VERSION, validateExport, referencedAttachments } from './export.mjs';
 
 // 앱이 자신보다 높은 user_version의 DB를 만나면 열지 않는다(STOR-03) — 구버전으로 되돌린
 // 사용자가 최신 스키마에 실수로 쓰지 않게 막는 신호다.
@@ -99,8 +99,13 @@ UPDATE note SET pin_order = (
 
 // PRAGMA user_version 순번 마이그레이션(D-12 승계). 새 DB도 v0에서 이 배열을 처음부터 끝까지
 // 밟아 올라간다 — 경로가 하나다. 한 번 배포된 함수는 절대 고치지 않는다.
-export const MIGRATIONS = [(db) => db.exec(V1_SQL), (db) => db.exec(V2_SQL)];
-const MIGRATION_SQL = [V1_SQL, V2_SQL];
+// v3 — 첨부는 본문의 `attachments/<이름>` 참조에서 묶인다(D-11 개정). 같은 메모·같은 파일이 두 줄 되지 않게.
+const V3_SQL = `
+CREATE UNIQUE INDEX attachment_note_file ON attachment (note_id, file);
+`;
+
+export const MIGRATIONS = [(db) => db.exec(V1_SQL), (db) => db.exec(V2_SQL), (db) => db.exec(V3_SQL)];
+const MIGRATION_SQL = [V1_SQL, V2_SQL, V3_SQL];
 
 // 스키마가 실제로 만드는 표 이름 — 가드 테스트가 이것과 대조한다. 가상 표(note_fts)는 색인이라 제외.
 export function schemaTables() {
@@ -320,6 +325,11 @@ export function createStore(file) {
     db.prepare(
       'UPDATE note_link SET to_id = ? WHERE to_id IS NULL AND to_title = ? COLLATE NOCASE AND from_id != ?'
     ).run(id, title, id);
+
+    // 본문이 가리키는 첨부를 이 메모에 묶는다(STOR-04). 본문에서 사라진 참조는 풀지 않는다 —
+    // 되돌리기(Ctrl+Z)로 다시 나타날 수 있고, 메모가 정리될 때 함께 지워지면 충분하다.
+    const ia = db.prepare('INSERT OR IGNORE INTO attachment (id, note_id, file, created_at) VALUES (?, ?, ?, ?)');
+    for (const f of referencedAttachments(body)) ia.run(crypto.randomUUID(), id, f, now());
   }
 
   // 캡처 반영 — id가 멱등 키라 재시도돼도 중복이 없다. entries: [{ id, body, captured_at }]
@@ -532,7 +542,7 @@ export function createStore(file) {
   function addAttachment(noteId, file) {
     mustBeOpen();
     const id = crypto.randomUUID();
-    db.prepare('INSERT INTO attachment (id, note_id, file, created_at) VALUES (?, ?, ?, ?)').run(id, noteId, file, now());
+    db.prepare('INSERT OR IGNORE INTO attachment (id, note_id, file, created_at) VALUES (?, ?, ?, ?)').run(id, noteId, file, now());
     return id;
   }
 

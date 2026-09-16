@@ -380,3 +380,16 @@ test('importAll은 잘못된 파일을 백업도 만들기 전에 거절한다',
   assert.throws(() => store.importAll({ app: 'whenwork', note: [] }), /WHENNOTE가 내보낸 파일이 아닙니다/);
   store.close();
 });
+
+test('본문에 적힌 attachments/<이름> 참조가 저장 시점에 메모에 묶인다 — 퀵캡처에서 붙인 이미지 경로 (D-11 개정)', () => {
+  const store = createStore(tmpFile());
+  const f = '22222222-2222-4222-8222-222222222222.png';
+  seed(store, 'q', `퀵 메모\n![이미지](attachments/${f})`);
+  assert.deepEqual(store.attachmentFiles(), [f]);
+  // 같은 참조를 다시 저장해도 두 줄이 되지 않는다(v3 유니크 인덱스)
+  store.updateNote('q', `퀵 메모 고침\n![이미지](attachments/${f})`);
+  assert.deepEqual(store.attachmentFiles(), [f]);
+  store.addAttachment('q', f);
+  assert.deepEqual(store.attachmentFiles(), [f]);
+  store.close();
+});

@@ -3,6 +3,7 @@
 
 const PURGE_DAYS = 30; // 소프트 삭제한 메모를 실제로 비우기까지 두는 기간(MAIN-05)
 const PURGE_DELAY_MS = 30_000; // 켜자마자 부팅이 무거워지지 않도록 조금 뒤에
+const ORPHAN_AGE_MS = 24 * 60 * 60 * 1000; // 표에 없는 첨부 파일을 치우기 전에 기다리는 시간
 
 export function scheduleJobs(ctx) {
   // 큐 → 저장소, 앱 시작 시 딱 1회(D-01/D-02 승계). 실행 중에는 다시 부르지 않는다 — 주기
@@ -29,11 +30,12 @@ export function scheduleJobs(ctx) {
     }
   }
 
-  // 표에 없는 첨부 파일(가져오기 실패·삭제 실패 등으로 남은 것)을 치운다
+  // 표에 없는 첨부 파일(붙여 놓고 저장하지 않은 것, 가져오기·삭제 실패의 잔재)을 치운다.
+  // 하루는 기다린다 — 퀵캡처에 붙인 이미지는 메모가 저장돼야 표에 묶이기 때문이다.
   function purgeOrphans() {
     try {
       const known = new Set(ctx.store.attachmentFiles());
-      ctx.attachments?.remove(ctx.attachments.list().filter((f) => !known.has(f)));
+      ctx.attachments?.remove(ctx.attachments.listOlderThan(ORPHAN_AGE_MS).filter((f) => !known.has(f)));
     } catch {
       // 조용히 — 다음 기동에
     }
