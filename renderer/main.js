@@ -6,9 +6,14 @@ const $ = (id) => document.getElementById(id);
 const els = {
   q: $('q'), tags: $('tags'), create: $('create'), createLabel: $('createLabel'), count: $('count'), list: $('list'),
   placeholder: $('placeholder'), editor: $('editor'), body: $('body'), preview: $('preview'), meta: $('meta'),
-  saved: $('saved'), notice: $('notice'), hotkeyHint: $('hotkeyHint'), footHotkey: $('footHotkey'),
+  saved: $('saved'), notice: $('notice'), placeholderHotkey: $('placeholderHotkey'), footHotkey: $('footHotkey'),
   undo: $('undo'), undoText: $('undoText'), undoBtn: $('undoBtn'), keymap: $('keymap'), keymapBtn: $('keymapBtn'),
   togglePreview: $('togglePreview'), pin: $('pin'), archive: $('archive'), remove: $('remove'),
+  left: document.querySelector('.left'), archToggle: $('archToggle'), order: $('order'),
+  settings: $('settings'), hotkeyIn: $('hotkeyIn'), hotkeyHint: $('hotkeyHint'), hotkeyReset: $('hotkeyReset'),
+  autostart: $('autostart'), autostartLabel: $('autostartLabel'), autostartHint: $('autostartHint'),
+  dataLine: $('dataLine'), dataFile: $('dataFile'), openData: $('openData'),
+  versionLine: $('versionLine'), updateLine: $('updateLine'), updateCheck: $('updateCheck'), updateInstall: $('updateInstall'),
 };
 
 const state = {
@@ -21,6 +26,8 @@ const state = {
   preview: false,
   dirty: false,
   hotkeyLabel: '',
+  archived: false, // 보관함 보기 — 아카이브한 메모만 본다
+  hotkeyDefault: '',
 };
 
 const SAVE_MS = 400;
@@ -60,7 +67,7 @@ function fillHighlighted(node, str) {
 async function runSearch(q = els.q.value) {
   state.q = q;
   const seq = ++searchSeq;
-  const res = await window.whennote.search(q);
+  const res = await window.whennote.search(q, { archived: state.archived });
   if (seq !== searchSeq) return; // 더 새 검색이 이미 나갔다
   if (!res.ok) {
     state.results = [];
@@ -78,7 +85,7 @@ async function runSearch(q = els.q.value) {
 
 function renderCreate() {
   const plain = state.query.terms.join(' ').trim();
-  const show = plain.length > 0 && !state.query.choseong;
+  const show = plain.length > 0 && !state.query.choseong && !state.archived;
   els.create.hidden = !show;
   if (show) text(els.createLabel, `새 메모 만들기: “${plain}”`);
 }
@@ -87,9 +94,10 @@ function renderList() {
   els.list.replaceChildren();
   text(els.count, state.results.length ? `${state.results.length}개 메모` : '');
   if (!state.results.length) {
-    const msg = state.q.trim()
-      ? '일치하는 메모가 없습니다.\nShift+Enter로 이 문장을 새 메모로 만듭니다.'
-      : `아직 메모가 없습니다.\n${state.hotkeyLabel || '단축키'}로 어디서든 적거나, 위에 적고 Shift+Enter.`;
+    let msg;
+    if (state.archived) msg = state.q.trim() ? '보관함에 일치하는 메모가 없습니다.' : '보관함이 비어 있습니다.\n메모를 열고 보관 버튼을 누르면 여기로 옵니다.';
+    else if (state.q.trim()) msg = '일치하는 메모가 없습니다.\nShift+Enter로 이 문장을 새 메모로 만듭니다.';
+    else msg = `아직 메모가 없습니다.\n${state.hotkeyLabel || '단축키'}로 어디서든 적거나, 위에 적고 Shift+Enter.`;
     const e = el('div', 'empty');
     e.style.whiteSpace = 'pre-line';
     e.textContent = msg;
@@ -393,6 +401,105 @@ function flashNotice(message, ms = 2500) {
 function toggleKeymap(force) {
   const on = force ?? els.keymap.hidden;
   els.keymap.hidden = !on;
+  if (on) els.settings.hidden = true;
+}
+
+// Ctrl+Shift+A — 보관함 보기. 아카이브한 메모만 본다. 새 메모 만들기는 숨긴다.
+async function toggleArchived(force) {
+  await flushSave();
+  state.archived = force ?? !state.archived;
+  els.archToggle.classList.toggle('on', state.archived);
+  els.left.classList.toggle('archived', state.archived);
+  text(els.order, state.archived ? '보관한 메모' : '최근 열어본 순');
+  text(els.archToggle, state.archived ? '목록으로' : '보관함');
+  state.note = null;
+  els.editor.hidden = true;
+  els.placeholder.hidden = false;
+  await runSearch();
+  els.q.focus();
+}
+
+// ── 설정 (Ctrl+,)
+async function openSettings() {
+  els.keymap.hidden = true;
+  els.settings.hidden = false;
+  await renderSettings();
+}
+
+function closeSettings() {
+  els.settings.hidden = true;
+  els.q.focus();
+}
+
+function toggleSettings() {
+  return els.settings.hidden ? openSettings() : closeSettings();
+}
+
+async function renderSettings() {
+  const s = await window.whennote.settingsGet();
+  if (!s.ok) return;
+  state.hotkeyDefault = s.hotkeyDefault;
+  els.hotkeyIn.value = s.hotkeyLabel;
+  els.hotkeyHint.className = 'shint' + (s.hotkeyOk ? '' : ' warn');
+  text(els.hotkeyHint, s.hotkeyOk
+    ? '칸을 누른 뒤 원하는 조합을 누르면 바로 바뀝니다. Ctrl·Alt 중 하나는 들어가야 합니다.'
+    : '이 조합은 다른 앱이 쓰고 있어 잡히지 않았습니다 — 칸을 누르고 다른 조합을 누르세요.');
+  els.autostart.checked = !!s.openAtLogin;
+  text(els.autostartLabel, s.openAtLogin ? '켜짐' : '꺼짐');
+  els.autostart.disabled = !s.packaged;
+  text(els.autostartHint, s.packaged ? '' : '개발 실행에서는 바꿀 수 없습니다 — 설치본에서만 동작합니다.');
+  text(els.dataLine, s.store.ok ? `메모 ${s.store.notes}개 · 저장소 정상` : s.store.notice ?? '저장소를 열지 못했습니다');
+  text(els.dataFile, s.store.file);
+  text(els.versionLine, `WHENNOTE ${s.version}`);
+  renderUpdate(s.update);
+}
+
+function renderUpdate(u) {
+  text(els.updateLine, u.line ?? '');
+  els.updateInstall.hidden = !(u.status === 'ready' || (u.status === 'available' && !u.canAutoUpdate));
+  text(els.updateInstall, u.canAutoUpdate ? '지금 설치' : '받는 곳 열기');
+}
+
+// KeyboardEvent → Electron 가속기 문자열. 한글 IME 상태와 무관하게 물리 키(code)로 읽는다.
+// 수식키만 누른 것, Ctrl·Alt·Super가 하나도 없는 것은 null.
+function acceleratorFrom(e) {
+  const mods = [];
+  if (e.ctrlKey) mods.push('Control');
+  if (e.altKey) mods.push('Alt');
+  if (e.shiftKey) mods.push('Shift');
+  if (e.metaKey) mods.push('Super');
+  if (!e.ctrlKey && !e.altKey && !e.metaKey) return null;
+  const code = e.code || '';
+  let key = null;
+  if (/^Key[A-Z]$/.test(code)) key = code.slice(3);
+  else if (/^Digit[0-9]$/.test(code)) key = code.slice(5);
+  else if (/^F([1-9]|1[0-9]|2[0-4])$/.test(code)) key = code;
+  else if (code === 'Space') key = 'Space';
+  else if (/^Arrow(Up|Down|Left|Right)$/.test(code)) key = code.slice(5);
+  else if (['Backspace', 'Delete', 'Tab', 'Enter', 'Home', 'End', 'PageUp', 'PageDown', 'Insert'].includes(code)) key = code === 'Enter' ? 'Return' : code;
+  else if (/^Numpad[0-9]$/.test(code)) key = 'num' + code.slice(6);
+  else {
+    // 기호 키 — Electron이 받는 표기로
+    const sym = { Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\', Backquote: '`' };
+    key = sym[code] ?? null;
+  }
+  if (!key) return null;
+  return [...mods, key].join('+');
+}
+
+async function applyHotkey(accel) {
+  const res = await window.whennote.hotkeySet(accel);
+  if (res.ok) {
+    state.hotkeyLabel = res.label;
+    els.hotkeyIn.value = res.label;
+    els.hotkeyHint.className = 'shint ok';
+    text(els.hotkeyHint, `${res.label} 로 바뀌었습니다 — 지금부터 어디서든 이 조합으로 열립니다.`);
+    text(els.footHotkey, `${res.label} 퀵 메모`);
+    $('keymapHotkey').replaceChildren(el('kbd', null, res.label));
+  } else {
+    els.hotkeyHint.className = 'shint warn';
+    text(els.hotkeyHint, res.error ?? '그 조합은 쓸 수 없습니다');
+  }
 }
 
 function showUndo(message, onUndo) {
@@ -413,12 +520,37 @@ els.q.addEventListener('input', () => runSearch().then(renderTags));
 document.addEventListener('keydown', (e) => {
   const inSearch = document.activeElement === els.q;
   const inBody = document.activeElement === els.body;
+  // 설정의 단축키 칸에 포커스가 있으면 모든 키는 "조합 입력"이다
+  if (document.activeElement === els.hotkeyIn) {
+    if (e.key === 'Escape' || e.key === 'Tab') {
+      els.hotkeyIn.blur();
+      if (e.key === 'Escape') e.preventDefault();
+      return;
+    }
+    e.preventDefault();
+    if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+    const accel = acceleratorFrom(e);
+    if (!accel) {
+      els.hotkeyHint.className = 'shint warn';
+      return text(els.hotkeyHint, 'Ctrl 또는 Alt를 함께 눌러야 합니다.');
+    }
+    return applyHotkey(accel);
+  }
   if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
     return toggleKeymap();
   }
+  if (e.key === ',' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    return toggleSettings();
+  }
+  if ((e.key === 'A' || e.key === 'a') && e.shiftKey && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    return toggleArchived();
+  }
   if (e.key === 'Escape') {
     e.preventDefault();
+    if (!els.settings.hidden) return closeSettings();
     if (!els.keymap.hidden) return toggleKeymap(false);
     // 목록은 늘 왼쪽에 있으니 "뒤로"가 없다. 본문에서는 검색창으로, 검색창에서는 검색어 지우기, 그다음 창 닫기.
     if (!inSearch) {
@@ -464,6 +596,25 @@ els.pin.addEventListener('click', togglePin);
 els.archive.addEventListener('click', toggleArchive);
 els.remove.addEventListener('click', () => removeNote());
 els.keymapBtn.addEventListener('click', () => toggleKeymap());
+els.archToggle.addEventListener('click', () => toggleArchived());
+$('winSettings').addEventListener('click', () => toggleSettings());
+els.settings.addEventListener('click', (e) => {
+  if (e.target === els.settings) closeSettings();
+});
+els.hotkeyReset.addEventListener('click', () => applyHotkey(state.hotkeyDefault));
+els.autostart.addEventListener('change', async () => {
+  const res = await window.whennote.settingsAutostart(els.autostart.checked);
+  els.autostart.checked = !!res.openAtLogin;
+  text(els.autostartLabel, res.openAtLogin ? '켜짐' : '꺼짐');
+  els.autostartHint.className = 'shint' + (res.ok ? '' : ' warn');
+  text(els.autostartHint, res.ok ? '' : '켜지 못했습니다 — 시스템 설정의 로그인 항목에서 직접 추가해 주세요.');
+});
+els.openData.addEventListener('click', () => window.whennote.settingsOpenData());
+els.updateCheck.addEventListener('click', async () => {
+  text(els.updateLine, '업데이트 확인 중…');
+  renderUpdate(await window.whennote.updateCheck());
+});
+els.updateInstall.addEventListener('click', () => window.whennote.updateInstall());
 $('winMin').addEventListener('click', () => window.whennote.minimize());
 $('winClose').addEventListener('click', () => {
   flushSave();
@@ -487,7 +638,7 @@ window.addEventListener('focus', () => {
   const init = await window.whennote.init();
   if (init.ok) {
     state.hotkeyLabel = init.hotkeyLabel;
-    text(els.hotkeyHint, `${init.hotkeyLabel} 로 어디서든 적을 수 있습니다`);
+    text(els.placeholderHotkey, `${init.hotkeyLabel} 로 어디서든 적을 수 있습니다`);
     text(els.footHotkey, `${init.hotkeyLabel} 퀵 메모`);
     $('keymapHotkey').replaceChildren(el('kbd', null, init.hotkeyLabel));
     if (init.notice) text(els.notice, init.notice);

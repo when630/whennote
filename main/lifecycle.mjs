@@ -50,6 +50,11 @@ const MAIN_PROBE = `(async () => {
   await step('search:cho', () => runSearch('ㅇㅅㅁ'));
   await step('search:tag', () => runSearch('#없는태그'));
   await step('search:clear', () => runSearch(''));
+  await step('archived:on', () => toggleArchived(true));
+  await step('archived:off', () => toggleArchived(false));
+  await step('settings:open', () => openSettings());
+  await step('settings:close', () => closeSettings());
+  await step('keymap', () => { toggleKeymap(true); toggleKeymap(false); });
   if (state.results.length) {
     await step('open', () => openNote(state.results[0].id));
     await wait(80);

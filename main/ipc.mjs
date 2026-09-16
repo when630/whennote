@@ -1,5 +1,5 @@
 // main/ipc.mjs — 모든 ipcMain 핸들러. 채널 목록은 docs/03_기술_스펙.md §6.
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import crypto from 'node:crypto';
 import { platform } from './platform/index.mjs';
 import { updateLine } from './update.mjs';
@@ -121,6 +121,48 @@ export function registerIpc(ctx) {
         canAutoUpdate: platform.canAutoUpdate,
       },
     };
+  });
+
+  // ── 설정 화면. app:init과 달리 읽어도 상태(openNoteId·notice)를 비우지 않는다.
+  function settingsView() {
+    const st = ctx.store.status();
+    const hotkey = ctx.hotkey ?? platform.defaultHotkey;
+    return {
+      ok: true,
+      hotkey,
+      hotkeyLabel: platform.hotkeyLabel(hotkey),
+      hotkeyDefault: platform.defaultHotkey,
+      hotkeyOk: ctx.hotkeyOk,
+      openAtLogin: platform.getLoginItem(app),
+      packaged: app.isPackaged,
+      platform: platform.name,
+      store: { file: ctx.store.file, ok: st.ok, notice: st.notice, notes: ctx.store.count() },
+      version: app.getVersion(),
+      update: {
+        ...(ctx.update ?? { status: 'idle' }),
+        line: updateLine(ctx.update ?? {}, { canAutoUpdate: platform.canAutoUpdate, current: app.getVersion() }),
+        canAutoUpdate: platform.canAutoUpdate,
+      },
+    };
+  }
+  ipcMain.handle('settings:get', () => settingsView());
+
+  // PLAT-03: 미서명 macOS에서는 켜지지 않을 수 있다 — 돌려받은 값으로 확인하고, 실패하면
+  // 설정에 저장하지 않는다(다음에 켜졌다고 거짓으로 보이지 않게).
+  ipcMain.handle('settings:autostart', (_e, on) => {
+    const ok = platform.setLoginItem(app, !!on);
+    if (ok) {
+      ctx.settings.set('openAtLogin', !!on);
+      ctx.settings.flush();
+    }
+    ctx.refreshTrayMenu();
+    return { ok, openAtLogin: platform.getLoginItem(app) };
+  });
+
+  // 데이터 파일이 있는 폴더를 연다 — 사용자 자신의 파일이라 위치를 감출 이유가 없다
+  ipcMain.handle('settings:openData', () => {
+    shell.showItemInFolder(ctx.store.file);
+    return { ok: true };
   });
 
   // PLAT-02: 조합을 바꾸면 그 조합의 등록 성공 여부까지 확인해서 돌려준다.

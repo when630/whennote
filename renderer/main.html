@@ -65,6 +65,11 @@
   .create[hidden] { display: none; }
   .create .label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .listmeta { display: flex; justify-content: space-between; padding: 6px 6px 2px; color: var(--text-muted); font-size: var(--fs-xs); }
+  .listtools { display: flex; gap: 10px; align-items: center; }
+  .archtoggle { cursor: pointer; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--border); }
+  .archtoggle:hover { color: var(--text-secondary); border-color: var(--text-muted); }
+  .archtoggle.on { background: var(--accent-dim); color: var(--accent); border-color: transparent; }
+  .left.archived .row { border-style: dashed; }
   #list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; }
   .row {
     display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border-radius: var(--r-sm);
@@ -151,6 +156,30 @@
   .keymap .kgrid { display: grid; grid-template-columns: 150px 1fr; gap: 8px 14px; font-size: var(--fs-sm); color: var(--text-secondary); align-items: baseline; }
   .keymap .ksec { grid-column: 1 / -1; margin-top: 8px; font-size: var(--fs-xs); color: var(--text-muted); text-transform: none; letter-spacing: .04em; }
   .keymap kbd { font-size: 11px; }
+
+  /* ── 설정 패널 (Ctrl+,) — 키맵과 같은 오버레이 */
+  .panel.settings { width: 560px; }
+  .srow { display: grid; grid-template-columns: 140px 1fr; gap: 6px 16px; padding: 12px 0; border-top: 1px solid var(--border); font-size: var(--fs-sm); }
+  .slabel { color: var(--text-secondary); padding-top: 4px; }
+  .sbody { display: flex; flex-direction: column; gap: 8px; color: var(--text-primary); }
+  .shint { color: var(--text-muted); font-size: var(--fs-xs); line-height: 1.5; }
+  .shint.warn { color: var(--warning); }
+  .shint.ok { color: var(--success); }
+  .sfoot { margin-top: 12px; text-align: right; }
+  .hotkeyrow { display: flex; gap: 8px; }
+  .hotkeyrow input {
+    flex: 1; height: 32px; padding: 0 10px; border-radius: var(--r-sm); border: 1px solid var(--border);
+    background: var(--bg-inset); color: var(--text-primary); font-family: var(--font-mono); font-size: var(--fs-sm); outline: none; cursor: pointer;
+  }
+  .hotkeyrow input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--accent-dim); }
+  .sbtn {
+    height: 30px; padding: 0 12px; border-radius: var(--r-sm); border: 1px solid var(--border); background: var(--bg-inset);
+    color: var(--text-secondary); font: inherit; font-size: var(--fs-xs); cursor: pointer;
+  }
+  .sbtn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .btnrow { display: flex; gap: 8px; }
+  .switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+  .switch input { width: 16px; height: 16px; accent-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -158,6 +187,7 @@
     <div class="titlebar">
       <div class="brand"><span class="logo">N</span><span>WHENNOTE</span></div>
       <div class="winbtns">
+        <button id="winSettings" title="설정 (Ctrl+,)"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.2a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4Z"></path><path d="M13.2 8a5.2 5.2 0 0 0-.1-1l1.4-1.1-1.2-2.1-1.7.6a5.2 5.2 0 0 0-1.7-1L9.6 1.6H6.4l-.3 1.8a5.2 5.2 0 0 0-1.7 1l-1.7-.6-1.2 2.1L2.9 7a5.2 5.2 0 0 0 0 2l-1.4 1.1 1.2 2.1 1.7-.6a5.2 5.2 0 0 0 1.7 1l.3 1.8h3.2l.3-1.8a5.2 5.2 0 0 0 1.7-1l1.7.6 1.2-2.1L13.1 9c.1-.3.1-.7.1-1Z"></path></svg></button>
         <button id="winMin" title="최소화"><svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" stroke-width="1.2"><path d="M1 6h10"></path></svg></button>
         <button id="winClose" title="닫기 (트레이에 남습니다)"><svg width="12" height="12" viewBox="0 0 12 12" stroke="currentColor" stroke-width="1.2"><path d="M1.5 1.5l9 9M10.5 1.5l-9 9"></path></svg></button>
       </div>
@@ -175,13 +205,16 @@
         <div class="create" id="create" hidden>
           <span id="createIco"></span><span class="label" id="createLabel"></span><kbd>Shift ↵</kbd>
         </div>
-        <div class="listmeta"><span id="count"></span><span id="order">최근 열어본 순</span></div>
+        <div class="listmeta">
+          <span id="count"></span>
+          <span class="listtools"><span id="order">최근 열어본 순</span><span class="archtoggle" id="archToggle">보관함</span></span>
+        </div>
         <div id="list"></div>
       </div>
       <div class="right" id="right">
         <div class="placeholder" id="placeholder">
           <div>메모를 고르거나, 위에 적고 <kbd>Shift ↵</kbd></div>
-          <div id="hotkeyHint"></div>
+          <div id="placeholderHotkey"></div>
         </div>
         <div class="editor" id="editor" hidden>
           <div class="toolbar">
@@ -209,6 +242,45 @@
       <span id="footHotkey"></span>
     </div>
     <div class="undo" id="undo" hidden><span id="undoText"></span><button id="undoBtn">되돌리기</button></div>
+    <div class="keymap" id="settings" hidden>
+      <div class="panel settings">
+        <div class="ktitle">설정</div>
+        <div class="srow">
+          <div class="slabel">퀵 메모 단축키</div>
+          <div class="sbody">
+            <div class="hotkeyrow">
+              <input id="hotkeyIn" type="text" readonly placeholder="여기를 누르고 조합을 누르세요">
+              <button id="hotkeyReset" class="sbtn">기본값</button>
+            </div>
+            <div class="shint" id="hotkeyHint"></div>
+          </div>
+        </div>
+        <div class="srow">
+          <div class="slabel">로그인 시 자동 시작</div>
+          <div class="sbody">
+            <label class="switch"><input type="checkbox" id="autostart"><span id="autostartLabel"></span></label>
+            <div class="shint" id="autostartHint"></div>
+          </div>
+        </div>
+        <div class="srow">
+          <div class="slabel">내 데이터</div>
+          <div class="sbody">
+            <div id="dataLine"></div>
+            <div class="shint"><span id="dataFile"></span></div>
+            <div><button id="openData" class="sbtn">폴더 열기</button></div>
+          </div>
+        </div>
+        <div class="srow">
+          <div class="slabel">버전</div>
+          <div class="sbody">
+            <div id="versionLine"></div>
+            <div class="shint" id="updateLine"></div>
+            <div class="btnrow"><button id="updateCheck" class="sbtn">업데이트 확인</button><button id="updateInstall" class="sbtn" hidden>지금 설치</button></div>
+          </div>
+        </div>
+        <div class="shint sfoot">닫기 <kbd>Esc</kbd></div>
+      </div>
+    </div>
     <div class="keymap" id="keymap" hidden>
       <div class="panel">
         <div class="ktitle">단축키</div>
@@ -216,6 +288,8 @@
           <div class="ksec">어디서나</div>
           <div><span id="keymapHotkey"></span></div><div>퀵 메모 창 열기 · 닫기</div>
           <div><kbd>Ctrl /</kbd></div><div>이 목록</div>
+          <div><kbd>Ctrl ,</kbd></div><div>설정</div>
+          <div><kbd>Ctrl Shift A</kbd></div><div>보관함 보기 · 목록으로</div>
           <div><kbd>Esc</kbd></div><div>본문 → 검색창 → 검색어 지우기 → 창 닫기</div>
           <div class="ksec">검색·목록</div>
           <div><kbd>↑</kbd> <kbd>↓</kbd></div><div>메모 이동</div>

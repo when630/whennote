@@ -27,6 +27,9 @@ contextBridge.exposeInMainWorld('whennote', {
   onOpenNote: (cb) => ipcRenderer.on('note:open', (_e, id) => cb(id)),
 
   // ── 설정·업데이트
+  settingsGet: () => ipcRenderer.invoke('settings:get'),
+  settingsAutostart: (on) => ipcRenderer.invoke('settings:autostart', on),
+  settingsOpenData: () => ipcRenderer.invoke('settings:openData'),
   hotkeySet: (accel) => ipcRenderer.invoke('hotkey:set', accel),
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
