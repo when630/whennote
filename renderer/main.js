@@ -25,7 +25,7 @@ const state = {
   sel: -1,
   tags: [],
   note: null, // 열린 메모 { id, body, title, tags, links, backlinks, pinned_at, ... }
-  preview: false,
+  preview: true, // 기본 보기 모드. openNote가 열 때마다 정한다
   dirty: false,
   hotkeyLabel: '',
   archived: false, // 보관함 보기 — 아카이브한 메모만 본다
@@ -180,7 +180,7 @@ async function createFromQuery() {
   if (!res.ok) return;
   els.q.value = '';
   await runSearch('');
-  await openNote(res.id);
+  await openNote(res.id, { edit: true });
   // 커서를 본문 둘째 줄로 — 첫 줄(제목)은 이미 있다
   els.body.value = els.body.value.replace(/\n*$/, '\n');
   els.body.focus();
@@ -189,7 +189,9 @@ async function createFromQuery() {
 }
 
 // ── 편집
-async function openNote(id) {
+// 기본은 보기 모드다 — 메모는 쓰는 횟수보다 다시 읽는 횟수가 많다. 새로 만든 메모(검색어로,
+// 퀵캡처 Ctrl+Enter로, 없는 [[링크]]로)는 바로 이어서 적을 것이므로 편집 모드로 연다.
+async function openNote(id, { edit = false } = {}) {
   await flushSave();
   const res = await window.whennote.get(id);
   if (!res.ok || !res.note) return;
@@ -198,7 +200,7 @@ async function openNote(id) {
   els.body.value = res.note.body;
   els.placeholder.hidden = true;
   els.editor.hidden = false;
-  setPreview(state.preview);
+  setPreview(!edit);
   renderMeta();
   text(els.saved, '저장됨');
   els.saved.classList.remove('dirty');
@@ -315,12 +317,9 @@ function renderPreview() {
     if (!to) a.classList.add('missing');
     a.addEventListener('click', async () => {
       if (to) return openNote(to);
-      // 없는 제목이면 그 제목으로 새 메모를 만든다(LINK-02)
+      // 없는 제목이면 그 제목으로 새 메모를 만든다(LINK-02) — 바로 적을 것이므로 편집 모드
       const res = await window.whennote.create(a.dataset.title);
-      if (res.ok) {
-        await openNote(res.id);
-        setPreview(false);
-      }
+      if (res.ok) await openNote(res.id, { edit: true });
     });
   }
   for (const a of els.preview.querySelectorAll('a.tag')) {
@@ -677,7 +676,13 @@ window.whennote.onChanged(() => {
   runSearch();
   loadTags();
 });
-window.whennote.onOpenNote((id) => openNote(id));
+// 퀵캡처 Ctrl+Enter로 넘어온 메모 — 이어서 적으러 온 것이니 편집 모드
+window.whennote.onOpenNote((id) => openNote(id, { edit: true }));
+// 보기 모드에서 본문을 두 번 누르면 편집으로
+els.preview.addEventListener('dblclick', (e) => {
+  if (e.target.closest?.('a')) return;
+  setPreview(false);
+});
 window.addEventListener('focus', () => {
   if (!state.note) els.q.focus();
 });
@@ -693,9 +698,9 @@ window.addEventListener('focus', () => {
     else if (!init.hotkeyOk) text(els.notice, `단축키 ${init.hotkeyLabel} 등록 실패 — 다른 앱이 쓰고 있습니다`);
     else if (init.store && !init.store.ok) text(els.notice, init.store.notice ?? '저장소를 열지 못했습니다');
   }
-  setPreview(false);
+  setPreview(true);
   await runSearch('');
   loadTags();
-  if (init.ok && init.openNoteId) await openNote(init.openNoteId);
+  if (init.ok && init.openNoteId) await openNote(init.openNoteId, { edit: true });
   else els.q.focus();
 })();
