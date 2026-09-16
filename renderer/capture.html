@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<title>WHENNOTE 퀵 메모</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  /* 라운드·그림자는 Win11 네이티브에 맡긴다 */
+  html, body { background: var(--bg-raised); overflow: hidden; height: 100%; }
+  .capture { width: 100%; height: 100%; display: flex; flex-direction: column; }
+
+  /* 상단 바 = 드래그 영역. 버튼만 빼고 창을 잡아 옮긴다 */
+  .bar {
+    flex: none; display: flex; align-items: center; justify-content: space-between;
+    height: 40px; padding: 0 10px 0 14px; border-bottom: 1px solid var(--border);
+    -webkit-app-region: drag;
+  }
+  .bar .name { display: flex; align-items: center; gap: 8px; font-size: var(--fs-xs); color: var(--text-muted); }
+  .bar .logo {
+    width: 20px; height: 20px; border-radius: var(--r-sm);
+    background: var(--accent-dim); color: var(--accent);
+    display: grid; place-items: center; font-family: var(--font-mono); font-weight: 700; font-size: 11px;
+  }
+  .bar .btns { display: flex; gap: 4px; -webkit-app-region: no-drag; }
+  .bar button {
+    height: 26px; padding: 0 9px; border-radius: 7px; border: 1px solid transparent;
+    background: none; color: var(--text-muted); font: inherit; font-size: 11.5px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .bar button:hover { background: var(--bg-hover); color: var(--text-secondary); }
+  .bar button.on { background: var(--accent-dim); color: var(--accent); }
+  .bar button.close { width: 26px; padding: 0; justify-content: center; }
+
+  textarea {
+    flex: 1; resize: none; border: none; outline: none; background: none;
+    color: var(--text-primary); font-family: var(--font-sans); font-size: var(--fs-lg); line-height: 1.65;
+    padding: 14px 18px 8px; -webkit-app-region: no-drag; user-select: text;
+  }
+  textarea::placeholder { color: var(--text-muted); }
+
+  .foot {
+    flex: none; display: flex; justify-content: space-between; align-items: center; gap: var(--sp-3);
+    height: 36px; padding: 0 18px; border-top: 1px solid var(--border);
+    font-size: var(--fs-xs); color: var(--text-muted); background: var(--bg-app);
+    -webkit-app-region: drag;
+  }
+  .hints { display: flex; gap: var(--sp-3); flex: none; white-space: nowrap; }
+  .hints span { display: inline-flex; align-items: center; gap: 5px; }
+  .msg { text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .msg.ok { color: var(--success); }
+  .msg.warn { color: var(--warning); }
+</style>
+</head>
+<body>
+  <div class="capture">
+    <div class="bar">
+      <div class="name"><span class="logo">N</span><span>퀵 메모</span></div>
+      <div class="btns">
+        <button id="pin" title="켜 두면 다른 창을 눌러도 닫히지 않습니다">항상 위</button>
+        <button id="close" class="close" title="저장하고 닫기">×</button>
+      </div>
+    </div>
+    <textarea id="in" placeholder="그냥 적기. Esc로 닫으면 저장됩니다." spellcheck="false"></textarea>
+    <div class="foot">
+      <div class="hints">
+        <span><kbd>Esc</kbd> 저장하고 닫기</span>
+        <span><kbd>Ctrl ↵</kbd> 메인 창에서 열기</span>
+      </div>
+      <span class="msg" id="msg"></span>
+    </div>
+  </div>
+<script src="icons.js"></script>
+<script src="capture.js"></script>
+</body>
+</html>

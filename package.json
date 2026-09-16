@@ -1,0 +1,86 @@
+{
+  "name": "whennote",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "순수 메모 데스크톱 앱 — 단축키로 적고, 몇 글자로 다시 찾는다",
+  "author": "when630 <70129021+when630@users.noreply.github.com>",
+  "main": "main/index.mjs",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "test": "node --test \"test/**/*.test.mjs\"",
+    "smoke:crash": "node --test test/capture-crash-smoke.test.mjs",
+    "icons": "node tools/make-icon.mjs",
+    "build": "electron-builder --win --publish never",
+    "postinstall": "node tools/make-icon.mjs",
+    "build:mac": "electron-builder --mac --publish never",
+    "build:all": "electron-builder --win --mac --publish never"
+  },
+  "devDependencies": {
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  },
+  "build": {
+    "appId": "com.when630.whennote",
+    "productName": "WHENNOTE",
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "build/*.png"
+    ],
+    "artifactName": "WHENNOTE-${version}-${os}-${arch}.${ext}",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "WHENNOTE"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "identity": null
+    },
+    "dmg": {
+      "artifactName": "WHENNOTE-${version}-mac-${arch}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "when630",
+        "repo": "whennote"
+      }
+    ]
+  }
+}

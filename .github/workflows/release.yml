@@ -1,0 +1,102 @@
+# 태그를 밀면 Windows·macOS 설치 파일을 만들어 Releases에 올린다 (REL-04).
+#
+# 서명하지 않는다. CSC_IDENTITY_AUTO_DISCOVERY=false가 그것을 못 박는다 —
+# 이 값을 빼면 electron-builder가 러너 키체인에서 아무 인증서나 집어가려다
+# 빌드를 실패시키거나, 더 나쁘게는 의도하지 않은 것으로 서명한다.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  # 태그 없이 빌드만 확인하고 싶을 때 (업로드하지 않는다)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # 강제종료 스모크(test/capture-crash-smoke.test.mjs)는 실제 Electron을 띄우므로
+      # 헤드리스 리눅스에서는 디스플레이가 없어 죽는다. 이 테스트는 "캡처를 잃지 않는다"를
+      # 증명하는 자리라 CI에서 빼면 지키는 것이 없어진다 — 빼는 대신 xvfb를 씌운다.
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
+      - run: xvfb-run -a npm test
+        env:
+          # CI 컨테이너에는 user namespace가 없어 Electron 샌드박스가 뜨지 않는다
+          ELECTRON_DISABLE_SANDBOX: 1
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: build
+            artifact: |
+              dist/*.exe
+              dist/latest.yml
+          - os: macos-latest
+            script: build:mac
+            artifact: |
+              dist/*.dmg
+              dist/*.zip
+              dist/latest-mac.yml
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # 패키징 전에 진짜 Electron으로 한 번 돌려 본다 — 렌더러가 깨진 채로
+      # 설치 파일이 나가는 것을 막는다. macOS 러너에는 화면이 없지만
+      # --smoke는 창을 show하지 않으므로 헤드리스에서도 돈다.
+      - name: smoke
+        run: npm run smoke
+        env:
+          # 리눅스가 아니라 필요 없지만, 러너가 바뀌어도 같은 명령이 돌도록 둔다
+          ELECTRON_DISABLE_SANDBOX: 1
+
+      # 여기서는 만들기만 한다. 올리는 것은 아래 publish 잡 하나가 맡는다 —
+      # 빌드 스크립트의 --publish never가 없고 GH_TOKEN까지 있으면 electron-builder가
+      # 태그를 보고 스스로 드래프트 릴리스를 하나 더 만들어 태그마다 릴리스가 둘이 된다.
+      - name: build
+        run: npm run ${{ matrix.script }}
+        env:
+          # 미서명 배포 — 러너 키체인을 뒤지지 않게 못 박는다
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os }}
+          path: ${{ matrix.artifact }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      # latest.yml / latest-mac.yml이 함께 올라가야 electron-updater가 새 버전을 본다 —
+      # 설치 파일만 올리면 앱은 영영 "아직 올라온 릴리스가 없습니다"라고 말한다.
+      - name: 올릴 파일 확인
+        run: find artifacts -type f | sort
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          draft: true # 사람이 내용을 보고 공개한다 — 자동으로 공개하지 않는다
+          generate_release_notes: true
