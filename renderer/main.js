@@ -136,11 +136,17 @@ function renderList() {
   selected?.scrollIntoView?.({ block: 'nearest' });
 }
 
+// ↑↓로 움직이면 그 메모가 바로 오른쫀에 보인다(보기 모드). 열어본 시각은 건드리지 않는다 —
+// 훑어보는 동안 목록 순서가 뒤바뀌면 어디를 보고 있었는지 잃는다. 키 반복을 견디게 짧게 디바운스.
+let peekTimer = null;
 function moveSel(delta) {
   if (!state.results.length) return;
   state.sel = Math.max(0, Math.min(state.results.length - 1, (state.sel < 0 ? 0 : state.sel) + delta));
   for (const [i, row] of [...els.list.children].entries()) row.classList.toggle('sel', i === state.sel);
   els.list.children[state.sel]?.scrollIntoView?.({ block: 'nearest' });
+  clearTimeout(peekTimer);
+  const id = state.results[state.sel]?.id;
+  if (id && state.note?.id !== id) peekTimer = setTimeout(() => openNote(id, { touch: false }), 60);
 }
 
 async function loadTags() {
@@ -191,9 +197,12 @@ async function createFromQuery() {
 // ── 편집
 // 기본은 보기 모드다 — 메모는 쓰는 횟수보다 다시 읽는 횟수가 많다. 새로 만든 메모(검색어로,
 // 퀵캡처 Ctrl+Enter로, 없는 [[링크]]로)는 바로 이어서 적을 것이므로 편집 모드로 연다.
-async function openNote(id, { edit = false } = {}) {
+let openSeq = 0;
+async function openNote(id, { edit = false, touch = true } = {}) {
   await flushSave();
-  const res = await window.whennote.get(id);
+  const seq = ++openSeq;
+  const res = await window.whennote.get(id, { touch });
+  if (seq !== openSeq) return; // 그 사이 다른 메모를 열었다(화살표 훑어보기) — 이 결과는 버린다
   if (!res.ok || !res.note) return;
   state.note = res.note;
   state.dirty = false;

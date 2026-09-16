@@ -85,8 +85,10 @@ export function registerIpc(ctx) {
   // ── 메모
   ipcMain.handle('note:search', guarded((q, opts) => ctx.store.searchNotes({ q, ...(opts ?? {}) })));
 
-  ipcMain.handle('note:get', guarded((id) => {
-    ctx.store.touchOpened(id);
+  // touch: false — 화살표로 훑어보는 것은 "열어봤다"로 치지 않는다. 치면 최근 열어본 순 목록이
+  // 훑는 동안 계속 뒤바뀐다. Enter·클릭·편집만 opened_at을 올린다.
+  ipcMain.handle('note:get', guarded((id, opts) => {
+    if (opts?.touch !== false) ctx.store.touchOpened(id);
     const note = ctx.store.getNote(id);
     return { note };
   }));

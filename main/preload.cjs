@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('whennote', {
   // ── 메인 창
   init: () => ipcRenderer.invoke('app:init'),
   search: (q, opts) => ipcRenderer.invoke('note:search', q, opts),
-  get: (id) => ipcRenderer.invoke('note:get', id),
+  get: (id, opts) => ipcRenderer.invoke('note:get', id, opts),
   update: (id, body) => ipcRenderer.invoke('note:update', id, body),
   create: (body) => ipcRenderer.invoke('note:create', body),
   setPinned: (id, on) => ipcRenderer.invoke('note:pin', id, on),
