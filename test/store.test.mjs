@@ -276,3 +276,46 @@ test('큐 재반영은 store.insertCaptures를 거쳐 검색에 나타난다 —
   assert.equal(store.searchNotes({ q: '직전' }).items[0].title, '죽기 직전 메모');
   store.close();
 });
+
+// ── 고정 순서 (D-10)
+
+test('고정하면 고정 그룹 맨 아래로 가고, Shift 이동은 고정끼리만 자리를 바꾼다', () => {
+  const store = createStore(tmpFile());
+  seed(store, 'a', '에이', at(-3000));
+  seed(store, 'b', '비', at(-2000));
+  seed(store, 'c', '씨', at(-1000));
+  seed(store, 'd', '디 (고정 아님)', at(-500));
+  store.setPinned('a', true);
+  store.setPinned('b', true);
+  store.setPinned('c', true);
+  const ids = () => store.searchNotes().items.map((i) => i.id);
+  assert.deepEqual(ids(), ['a', 'b', 'c', 'd'], '고정한 순서대로 선다 — 최근 열어본 순이 아니다');
+  assert.equal(store.movePinned('c', -1), true);
+  assert.deepEqual(ids(), ['a', 'c', 'b', 'd']);
+  assert.equal(store.movePinned('a', -1), false, '맨 위에서 더 올라가지 않는다');
+  assert.equal(store.movePinned('d', -1), false, '고정이 아니면 움직이지 않는다');
+  assert.deepEqual(ids(), ['a', 'c', 'b', 'd']);
+  store.setPinned('c', false);
+  assert.deepEqual(ids(), ['a', 'b', 'd', 'c'], '해제하면 번호를 버리고 최근 열어본 순으로 돌아간다');
+  store.close();
+});
+
+test('v1 DB를 열면 v2로 이행되며 기존 고정 메모가 고정한 순서로 번호를 받고 이행 전 백업이 남는다', () => {
+  const file = tmpFile();
+  const raw = new DatabaseSync(file);
+  MIGRATIONS[0](raw); // v1 스키마 그대로
+  raw.exec('PRAGMA user_version = 1');
+  const ins = raw.prepare(
+    `INSERT INTO note (id, body, title, title_cho, body_cho, created_at, updated_at, opened_at, pinned_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  ins.run('late', '나중에 고정', '나중에 고정', 'ㄴㅈㅇ ㄱㅈ', 'ㄴㅈㅇ ㄱㅈ', at(), at(), at(-9000), at(-1000));
+  ins.run('early', '먼저 고정', '먼저 고정', 'ㅁㅈ ㄱㅈ', 'ㅁㅈ ㄱㅈ', at(), at(), at(-100), at(-5000));
+  raw.close();
+  const store = createStore(file);
+  assert.equal(store.status().ok, true);
+  assert.deepEqual(store.searchNotes().items.map((i) => i.id), ['early', 'late']);
+  const backups = fs.readdirSync(path.join(path.dirname(file), 'backups')).filter((f) => /^store-v1-\d{8}\.sqlite$/.test(f));
+  assert.equal(backups.length, 1, '이행 직전 v1 백업이 하나 남는다');
+  store.close();
+});

@@ -119,6 +119,20 @@
   .undo[hidden] { display: none; }
   .undo button { color: var(--accent); }
   .undo button:hover { background: var(--bg-hover); }
+
+  .keymapbtn { cursor: pointer; }
+  .keymapbtn:hover { color: var(--text-secondary); }
+
+  /* ── 키맵 오버레이 (Ctrl+/) */
+  .keymap { position: absolute; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
+  .keymap .panel {
+    width: 520px; max-height: 80%; overflow-y: auto; padding: 18px 22px 20px; border-radius: var(--r-lg);
+    background: var(--bg-raised); border: 1px solid var(--border); box-shadow: var(--shadow-pop); user-select: text;
+  }
+  .keymap .ktitle { font-weight: 700; font-size: var(--fs-lg); margin-bottom: 12px; }
+  .keymap .kgrid { display: grid; grid-template-columns: 150px 1fr; gap: 8px 14px; font-size: var(--fs-sm); color: var(--text-secondary); align-items: baseline; }
+  .keymap .ksec { grid-column: 1 / -1; margin-top: 8px; font-size: var(--fs-xs); color: var(--text-muted); text-transform: none; letter-spacing: .04em; }
+  .keymap kbd { font-size: 11px; }
 </style>
 </head>
 <body>
@@ -164,11 +178,35 @@
       <span><kbd>↵</kbd> 열기</span>
       <span><kbd>Esc</kbd> 검색으로 · 닫기</span>
       <span><kbd>Ctrl E</kbd> 보기</span>
+      <span class="keymapbtn" id="keymapBtn"><kbd>Ctrl /</kbd> 모든 단축키</span>
       <span class="spacer"></span>
       <span class="notice" id="notice"></span>
       <span id="footHotkey"></span>
     </div>
     <div class="undo" id="undo" hidden><span id="undoText"></span><button id="undoBtn">되돌리기</button></div>
+    <div class="keymap" id="keymap" hidden>
+      <div class="panel">
+        <div class="ktitle">단축키</div>
+        <div class="kgrid">
+          <div class="ksec">어디서나</div>
+          <div><span id="keymapHotkey"></span></div><div>퀵 메모 창 열기 · 닫기</div>
+          <div><kbd>Ctrl /</kbd></div><div>이 목록</div>
+          <div><kbd>Esc</kbd></div><div>본문 → 검색창 → 검색어 지우기 → 창 닫기</div>
+          <div class="ksec">검색·목록</div>
+          <div><kbd>↑</kbd> <kbd>↓</kbd></div><div>메모 이동</div>
+          <div><kbd>↵</kbd></div><div>선택한 메모 열기</div>
+          <div><kbd>Shift ↵</kbd></div><div>검색어를 첫 줄로 새 메모</div>
+          <div><kbd>Shift ↑</kbd> <kbd>Shift ↓</kbd></div><div>고정한 메모끼리 순서 바꾸기</div>
+          <div><kbd>Ctrl Delete</kbd></div><div>선택한 메모 삭제 (30일 안에 되돌리기)</div>
+          <div class="ksec">편집</div>
+          <div><kbd>Ctrl E</kbd></div><div>보기 · 편집 전환</div>
+          <div><kbd>Enter</kbd></div><div>줄바꿈 — 저장은 자동</div>
+          <div class="ksec">퀵 메모 창</div>
+          <div><kbd>Esc</kbd></div><div>저장하고 닫기</div>
+          <div><kbd>Ctrl ↵</kbd></div><div>저장하고 메인 창에서 열기</div>
+        </div>
+      </div>
+    </div>
   </div>
 <script src="icons.js"></script>
 <script src="view.js"></script>

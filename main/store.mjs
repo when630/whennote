@@ -86,10 +86,19 @@ CREATE TABLE event (
 CREATE INDEX event_at ON event (at DESC);
 `;
 
+// v2 — 고정한 메모끼리의 순서(D-10). 고정 안 된 메모는 최근 열어본 순이 그대로이고(D-03),
+// 고정 그룹 안에서만 Shift+↑↓로 자리를 바꾼다. 이미 고정된 메모는 고정한 순서대로 번호를 받는다.
+const V2_SQL = `
+ALTER TABLE note ADD COLUMN pin_order INTEGER;
+UPDATE note SET pin_order = (
+  SELECT count(*) FROM note n2 WHERE n2.pinned_at IS NOT NULL AND n2.pinned_at <= note.pinned_at
+) WHERE pinned_at IS NOT NULL;
+`;
+
 // PRAGMA user_version 순번 마이그레이션(D-12 승계). 새 DB도 v0에서 이 배열을 처음부터 끝까지
 // 밟아 올라간다 — 경로가 하나다. 한 번 배포된 함수는 절대 고치지 않는다.
-export const MIGRATIONS = [(db) => db.exec(V1_SQL)];
-const MIGRATION_SQL = [V1_SQL];
+export const MIGRATIONS = [(db) => db.exec(V1_SQL), (db) => db.exec(V2_SQL)];
+const MIGRATION_SQL = [V1_SQL, V2_SQL];
 
 // 스키마가 실제로 만드는 표 이름 — 가드 테스트가 이것과 대조한다. 가상 표(note_fts)는 색인이라 제외.
 export function schemaTables() {
@@ -421,7 +430,9 @@ export function createStore(file) {
                 (SELECT group_concat(tag, ' ') FROM note_tag t WHERE t.note_id = n.id) AS tags
            FROM note n
           WHERE ${where.join(' AND ')}
-          ORDER BY (n.pinned_at IS NOT NULL) DESC, n.opened_at DESC
+          ORDER BY (n.pinned_at IS NOT NULL) DESC,
+                   CASE WHEN n.pinned_at IS NOT NULL THEN n.pin_order END ASC,
+                   n.opened_at DESC
           LIMIT ?`
       )
       .all(...params);
@@ -453,8 +464,42 @@ export function createStore(file) {
     mustBeOpen();
     return db.prepare(`UPDATE note SET ${column} = ? WHERE id = ?`).run(on ? now() : null, id).changes > 0;
   }
-  const setPinned = (id, on) => setFlag('pinned_at', id, on);
   const setArchived = (id, on) => setFlag('archived_at', id, on);
+
+  // 고정하면 고정 그룹의 맨 아래로 간다(pin_order = 최대+1). 해제하면 번호를 버린다.
+  function setPinned(id, on) {
+    mustBeOpen();
+    if (!on) return db.prepare('UPDATE note SET pinned_at = NULL, pin_order = NULL WHERE id = ?').run(id).changes > 0;
+    return (
+      db
+        .prepare(
+          `UPDATE note SET pinned_at = ?, pin_order = (SELECT COALESCE(MAX(pin_order), 0) + 1 FROM note WHERE pinned_at IS NOT NULL)
+            WHERE id = ? AND pinned_at IS NULL`
+        )
+        .run(now(), id).changes > 0
+    );
+  }
+
+  // 고정 그룹 안에서 한 칸 위/아래(dir = -1 | 1)로. 고정이 아니거나 끝이면 false.
+  // 순서를 다시 매기고 이웃과 바꾼다 — 같은 번호가 생겨도(옛 데이터) 여기서 정리된다.
+  function movePinned(id, dir) {
+    mustBeOpen();
+    const step = dir < 0 ? -1 : 1;
+    return withTransaction(db, () => {
+      const pinned = db
+        .prepare('SELECT id FROM note WHERE pinned_at IS NOT NULL AND deleted_at IS NULL ORDER BY pin_order, opened_at DESC')
+        .all()
+        .map((r) => r.id);
+      const idx = pinned.indexOf(id);
+      if (idx < 0) return false;
+      const to = idx + step;
+      if (to < 0 || to >= pinned.length) return false;
+      [pinned[idx], pinned[to]] = [pinned[to], pinned[idx]];
+      const set = db.prepare('UPDATE note SET pin_order = ? WHERE id = ?');
+      pinned.forEach((pid, i) => set.run(i + 1, pid));
+      return true;
+    });
+  }
   const removeNote = (id) => setFlag('deleted_at', id, true);
   const restoreNote = (id) => setFlag('deleted_at', id, false);
 
@@ -507,6 +552,7 @@ export function createStore(file) {
     searchNotes,
     listTags,
     setPinned,
+    movePinned,
     setArchived,
     removeNote,
     restoreNote,

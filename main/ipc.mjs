@@ -88,6 +88,7 @@ export function registerIpc(ctx) {
     'note:archive': (id, on) => ctx.store.setArchived(id, on),
     'note:remove': (id) => ctx.store.removeNote(id),
     'note:restore': (id) => ctx.store.restoreNote(id),
+    'note:move': (id, dir) => ctx.store.movePinned(id, dir),
   };
   for (const [ch, fn] of Object.entries(flagOps)) {
     ipcMain.handle(ch, guarded((...args) => ({ changed: fn(...args) })));

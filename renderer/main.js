@@ -7,7 +7,7 @@ const els = {
   q: $('q'), tags: $('tags'), create: $('create'), createLabel: $('createLabel'), count: $('count'), list: $('list'),
   placeholder: $('placeholder'), editor: $('editor'), body: $('body'), preview: $('preview'), meta: $('meta'),
   saved: $('saved'), notice: $('notice'), hotkeyHint: $('hotkeyHint'), footHotkey: $('footHotkey'),
-  undo: $('undo'), undoText: $('undoText'), undoBtn: $('undoBtn'),
+  undo: $('undo'), undoText: $('undoText'), undoBtn: $('undoBtn'), keymap: $('keymap'), keymapBtn: $('keymapBtn'),
   togglePreview: $('togglePreview'), pin: $('pin'), archive: $('archive'), remove: $('remove'),
 };
 
@@ -346,16 +346,53 @@ async function toggleArchive() {
   }
 }
 
-async function removeNote() {
-  if (!state.note) return;
-  const id = state.note.id;
-  state.dirty = false; // 지우는 메모의 미뤄둔 저장은 버린다
+// 열린 메모 또는 목록에서 선택한 메모를 지운다. 소프트 삭제라 토스트로 되돌릴 수 있다.
+async function removeNote(targetId = state.note?.id) {
+  if (!targetId) return;
+  const id = targetId;
+  const wasOpen = state.note?.id === id;
+  const idx = state.results.findIndex((r) => r.id === id);
+  if (wasOpen) state.dirty = false; // 지우는 메모의 미뤄둔 저장은 버린다
   await window.whennote.remove(id);
-  await closeNote();
+  if (wasOpen) await closeNote();
+  else await runSearch();
+  // 다음 항목이 선택으로 — 목록에서 연달아 지울 때 커서가 튀지 않게
+  if (idx >= 0 && state.results.length) {
+    state.sel = Math.min(idx, state.results.length - 1);
+    renderList();
+  }
   showUndo('삭제했습니다 — 30일 안에는 되돌릴 수 있습니다', async () => {
     await window.whennote.restore(id);
     runSearch();
   });
+}
+
+// Shift+↑↓ — 고정한 메모끼리의 순서를 바꾼다(D-10). 고정이 아니면 안내만 한다.
+async function moveSelected(dir) {
+  const r = state.results[state.sel];
+  if (!r) return;
+  if (!r.pinned) return flashNotice('고정한 메모만 순서를 바꿀 수 있습니다 — 먼저 고정하세요');
+  const res = await window.whennote.move(r.id, dir);
+  if (!res.ok || !res.changed) return;
+  await runSearch();
+  const idx = state.results.findIndex((x) => x.id === r.id);
+  if (idx >= 0) {
+    state.sel = idx;
+    renderList();
+  }
+}
+
+let noticeTimer = null;
+function flashNotice(message, ms = 2500) {
+  clearTimeout(noticeTimer);
+  text(els.notice, message);
+  noticeTimer = setTimeout(() => text(els.notice, ''), ms);
+}
+
+// Ctrl+/ — 키맵. `?`는 검색창에서 글자 입력이라 못 쓴다.
+function toggleKeymap(force) {
+  const on = force ?? els.keymap.hidden;
+  els.keymap.hidden = !on;
 }
 
 function showUndo(message, onUndo) {
@@ -376,8 +413,13 @@ els.q.addEventListener('input', () => runSearch().then(renderTags));
 document.addEventListener('keydown', (e) => {
   const inSearch = document.activeElement === els.q;
   const inBody = document.activeElement === els.body;
+  if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    return toggleKeymap();
+  }
   if (e.key === 'Escape') {
     e.preventDefault();
+    if (!els.keymap.hidden) return toggleKeymap(false);
     // 목록은 늘 왼쪽에 있으니 "뒤로"가 없다. 본문에서는 검색창으로, 검색창에서는 검색어 지우기, 그다음 창 닫기.
     if (!inSearch) {
       flushSave();
@@ -396,7 +438,12 @@ document.addEventListener('keydown', (e) => {
   if (inBody) return; // 본문 편집 중에는 아래 목록 단축키를 가로채지 않는다
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault();
-    return moveSel(e.key === 'ArrowDown' ? 1 : -1);
+    const dir = e.key === 'ArrowDown' ? 1 : -1;
+    return e.shiftKey ? moveSelected(dir) : moveSel(dir);
+  }
+  if (e.key === 'Delete' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    return removeNote(state.results[state.sel]?.id);
   }
   if (e.key === 'Enter' && e.shiftKey) {
     e.preventDefault();
@@ -415,7 +462,11 @@ els.create.addEventListener('click', createFromQuery);
 els.togglePreview.addEventListener('click', togglePreview);
 els.pin.addEventListener('click', togglePin);
 els.archive.addEventListener('click', toggleArchive);
-els.remove.addEventListener('click', removeNote);
+els.remove.addEventListener('click', () => removeNote());
+els.keymapBtn.addEventListener('click', () => toggleKeymap());
+els.keymap.addEventListener('click', (e) => {
+  if (e.target === els.keymap) toggleKeymap(false); // 바깥을 누르면 닫힌다
+});
 
 // 퀵캡처 저장 등 밖에서 저장소가 바뀌면 목록을 새로 — 편집 중 미저장분은 건드리지 않는다
 window.whennote.onChanged(() => {
@@ -433,6 +484,7 @@ window.addEventListener('focus', () => {
     state.hotkeyLabel = init.hotkeyLabel;
     text(els.hotkeyHint, `${init.hotkeyLabel} 로 어디서든 적을 수 있습니다`);
     text(els.footHotkey, `${init.hotkeyLabel} 퀵 메모`);
+    $('keymapHotkey').replaceChildren(el('kbd', null, init.hotkeyLabel));
     if (init.notice) text(els.notice, init.notice);
     else if (!init.hotkeyOk) text(els.notice, `단축키 ${init.hotkeyLabel} 등록 실패 — 다른 앱이 쓰고 있습니다`);
     else if (init.store && !init.store.ok) text(els.notice, init.store.notice ?? '저장소를 열지 못했습니다');

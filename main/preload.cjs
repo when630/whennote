@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('whennote', {
   setArchived: (id, on) => ipcRenderer.invoke('note:archive', id, on),
   remove: (id) => ipcRenderer.invoke('note:remove', id),
   restore: (id) => ipcRenderer.invoke('note:restore', id),
+  // 고정 그룹 안에서 한 칸 위(-1)/아래(1)
+  move: (id, dir) => ipcRenderer.invoke('note:move', id, dir),
   tags: () => ipcRenderer.invoke('tag:list'),
   onChanged: (cb) => ipcRenderer.on('state:changed', () => cb()),
   onOpenNote: (cb) => ipcRenderer.on('note:open', (_e, id) => cb(id)),
