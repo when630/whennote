@@ -1,7 +1,7 @@
 // 퀵 메모 — 저장 버튼이 없다(CAP-02). Esc·blur·창 닫기·단축키 재입력이 모두 "저장하고 닫기"다.
 // Enter는 언제나 줄바꿈이다(D-05). 메인 프로세스는 본문을 갖고 있지 않으므로 닫아야 할 때
 // capture:flush를 보내고, 여기서 저장한 뒤 hide()를 부른다.
-const { pickImage } = window.VIEW;
+const { pickImage, editList } = window.VIEW;
 const input = document.getElementById('in');
 const msg = document.getElementById('msg');
 const pinBtn = document.getElementById('pin');
@@ -100,6 +100,26 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     return openInMain();
   }
+});
+
+// 목록 이어쓰기·Tab 들여쓰기 — 메인 창과 같은 규칙(renderer/view.js editList)
+input.addEventListener('keydown', (e) => {
+  if (e.isComposing) return;
+  let action = null;
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) action = 'enter';
+  else if (e.key === 'Tab') action = e.shiftKey ? 'outdent' : 'indent';
+  if (!action) return;
+  const r = editList(input.value, input.selectionStart, input.selectionEnd, action);
+  if (!r) {
+    if (action === 'indent') {
+      e.preventDefault();
+      input.setRangeText('  ', input.selectionStart, input.selectionEnd, 'end');
+    }
+    return;
+  }
+  e.preventDefault();
+  input.value = r.text;
+  input.setSelectionRange(r.start, r.end);
 });
 
 // 이미지를 붙이면 파일로 먼저 저장하고 마크다운 참조를 넣는다. 메모에 묶이는 것은 저장될 때다(D-11 개정).

@@ -97,5 +97,48 @@
     return null;
   }
 
-  root.VIEW = { toChoseong, highlightRanges, splitByRanges, relativeTime, pickImage };
+  // ── 편집 보조: 목록 이어쓰기와 들여쓰기. textarea의 값과 커서를 받아 새 값과 커서를 돌려주는 순수 함수.
+  //   'enter'  : 목록 줄에서 Enter → 다음 줄에 같은 표식(번호는 +1, 체크박스는 빈 칸). 내용이 빈 항목에서
+  //              Enter → 표식을 지운다(목록 끝내기). 목록 줄이 아니면 null(기본 동작에 맡긴다).
+  //   'indent' : 줄 앞에 두 칸. 'outdent': 줄 앞의 두 칸(또는 한 칸)을 뗀다.
+  const LIST_LINE = /^(\s*)([-*]|\d+)([.)]?)(\s+)(\[[ xX]\]\s+)?(.*)$/;
+
+  function lineBounds(text, pos) {
+    const start = text.lastIndexOf('\n', pos - 1) + 1;
+    const endIdx = text.indexOf('\n', pos);
+    return { start, end: endIdx < 0 ? text.length : endIdx };
+  }
+
+  function editList(text, selStart, selEnd, action) {
+    const src = String(text ?? '');
+    const { start, end } = lineBounds(src, selStart);
+    const line = src.slice(start, end);
+    if (action === 'indent') {
+      const next = src.slice(0, start) + '  ' + src.slice(start);
+      return { text: next, start: selStart + 2, end: selEnd + 2 };
+    }
+    if (action === 'outdent') {
+      const n = line.startsWith('  ') ? 2 : line.startsWith(' ') ? 1 : 0;
+      if (!n) return null;
+      const next = src.slice(0, start) + src.slice(start + n);
+      return { text: next, start: Math.max(start, selStart - n), end: Math.max(start, selEnd - n) };
+    }
+    if (action !== 'enter') return null;
+    const m = line.match(LIST_LINE);
+    if (!m) return null;
+    const [, indent, marker, dot, , box, content] = m;
+    if (!content.trim() && selStart >= end) {
+      // 빈 항목에서 Enter — 목록을 끝낸다: 표식을 지우고 빈 줄만 남긴다
+      const next = src.slice(0, start) + indent + src.slice(end);
+      const cursor = start + indent.length;
+      return { text: next, start: cursor, end: cursor };
+    }
+    const nextMarker = /^\d+$/.test(marker) ? String(Number(marker) + 1) + (dot || '.') : marker;
+    const insert = '\n' + indent + nextMarker + ' ' + (box ? '[ ] ' : '');
+    const next = src.slice(0, selStart) + insert + src.slice(selEnd);
+    const cursor = selStart + insert.length;
+    return { text: next, start: cursor, end: cursor };
+  }
+
+  root.VIEW = { toChoseong, highlightRanges, splitByRanges, relativeTime, pickImage, editList };
 })(globalThis);

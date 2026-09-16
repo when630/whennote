@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld('whennote', {
   updateInstall: () => ipcRenderer.invoke('update:install'),
 
   // ── 공통
+  // http(s) 링크만 기본 브라우저로 — 메인 프로세스가 스킴을 확인한다
+  openExternal: (url) => ipcRenderer.invoke('shell:open', url),
   hide: () => ipcRenderer.send('win:hide'),
   minimize: () => ipcRenderer.send('win:minimize'),
   openApp: () => ipcRenderer.send('app:open'),

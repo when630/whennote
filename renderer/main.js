@@ -3,7 +3,32 @@
 // 전역 함수 runSearch·openNote·closeNote·togglePreview와 state는 스모크 프로브(main/lifecycle.mjs)가
 // 부른다 — 이름을 바꾸면 프로브도 함께 바꾼다.
 const $ = (id) => document.getElementById(id);
-const { pickImage } = window.VIEW;
+const { pickImage, editList } = window.VIEW;
+
+// textarea 편집 보조 — Enter로 목록 이어쓰기, Tab/Shift+Tab 들여쓰기(퀵 메모 창도 같은 함수를 쓴다)
+function bindListEditing(ta, onChange) {
+  ta.addEventListener('keydown', (e) => {
+    if (e.isComposing) return;
+    let action = null;
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) action = 'enter';
+    else if (e.key === 'Tab') action = e.shiftKey ? 'outdent' : 'indent';
+    if (!action) return;
+    const r = editList(ta.value, ta.selectionStart, ta.selectionEnd, action);
+    if (!r) {
+      if (action === 'indent') {
+        // 목록이 아니어도 Tab이 포커스를 빼앗지 않게 두 칸을 넣는다
+        e.preventDefault();
+        ta.setRangeText('  ', ta.selectionStart, ta.selectionEnd, 'end');
+        onChange.call(null);
+      }
+      return;
+    }
+    e.preventDefault();
+    ta.value = r.text;
+    ta.setSelectionRange(r.start, r.end);
+    onChange.call(null);
+  });
+}
 const els = {
   q: $('q'), tags: $('tags'), create: $('create'), createLabel: $('createLabel'), count: $('count'), list: $('list'),
   placeholder: $('placeholder'), editor: $('editor'), body: $('body'), preview: $('preview'), meta: $('meta'),
@@ -334,6 +359,21 @@ function renderPreview() {
   for (const a of els.preview.querySelectorAll('a.tag')) {
     a.addEventListener('click', () => searchTag(a.dataset.tag));
   }
+  // 외부 링크는 기본 브라우저로 — 렌더러 안에서 페이지가 바뀌면 앱이 사라진다
+  for (const a of els.preview.querySelectorAll('a.ext')) {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.whennote.openExternal(a.href);
+    });
+  }
+  // 체크박스 — 보기 모드에서 눌러 본문의 [ ]/[x]를 바꾼다. 할 일 관리가 아니라 글의 일부다.
+  for (const box of els.preview.querySelectorAll('li.task input')) {
+    box.addEventListener('change', () => {
+      els.body.value = MD.toggleTask(els.body.value, Number(box.dataset.line));
+      markDirty();
+      renderPreview();
+    });
+  }
 }
 
 // ── 고정·아카이브·삭제
@@ -599,6 +639,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 els.body.addEventListener('input', markDirty);
+bindListEditing(els.body, markDirty);
 els.body.addEventListener('blur', () => flushSave());
 els.create.addEventListener('click', createFromQuery);
 els.togglePreview.addEventListener('click', togglePreview);

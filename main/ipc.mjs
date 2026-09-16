@@ -315,6 +315,19 @@ export function registerIpc(ctx) {
   ipcMain.handle('update:install', () => ({ ok: true, installing: !!ctx.installUpdate?.() }));
 
   // ── 공통
+  // 본문의 외부 링크. http·https만 — file:이나 다른 스킴은 열지 않는다(본문은 사용자가 적은 글이지만
+  // 가져온 JSON이나 붙인 글에서 온 링크일 수 있다).
+  ipcMain.handle('shell:open', async (_e, url) => {
+    try {
+      const u = new URL(String(url ?? ''));
+      if (u.protocol !== 'http:' && u.protocol !== 'https:') return { ok: false };
+      await shell.openExternal(u.toString());
+      return { ok: true };
+    } catch {
+      return { ok: false };
+    }
+  });
+
   ipcMain.on('win:hide', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.hide();
   });

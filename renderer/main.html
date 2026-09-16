@@ -122,6 +122,13 @@
   .preview a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(122,162,247,.4); cursor: pointer; }
   .preview a.wikilink.missing { color: var(--text-muted); border-bottom-style: dashed; }
   .preview a.tag { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .preview a.ext { color: var(--accent); text-decoration: underline; text-decoration-color: rgba(122,162,247,.45); cursor: pointer; overflow-wrap: anywhere; }
+  .preview s { color: var(--text-muted); }
+  .preview hr { border: none; border-top: 1px solid var(--border); margin: 16px 0; }
+  .preview ul ul, .preview ol ol, .preview ul ol, .preview ol ul { margin: 2px 0 2px; }
+  .preview li.task { list-style: none; margin-left: -20px; display: flex; align-items: baseline; gap: 8px; }
+  .preview li.task input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; flex: none; position: relative; top: 2px; }
+  .preview li.task.done > span { color: var(--text-muted); text-decoration: line-through; }
   .preview img { display: block; max-width: 100%; max-height: 480px; border-radius: var(--r-sm); border: 1px solid var(--border); margin: 6px 0 12px; }
   .meta { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: var(--fs-xs); }
   .meta .dot { width: 3px; height: 3px; border-radius: 99px; background: var(--text-muted); }
