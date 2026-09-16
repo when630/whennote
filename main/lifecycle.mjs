@@ -211,7 +211,8 @@ export function bootstrap() {
   }
   ctx.showCapture = showCapture;
 
-  // ── 메인 창: 일반 프레임, 작업 표시줄에 보임, blur로 닫지 않음(편집 중 다른 창을 봐도 남는다)
+  // ── 메인 창: 프레임 없음(제목 표시줄은 렌더러의 드래그 바), 작업 표시줄에 보임,
+  // blur로 닫지 않음(편집 중 다른 창을 봐도 남는다). 라운드·그림자는 Windows가 그린다.
   function getMainWin() {
     if (ctx.mainWin && !ctx.mainWin.isDestroyed()) return ctx.mainWin;
     const size = ctx.settings.get('mainSize') ?? {};
@@ -221,6 +222,8 @@ export function bootstrap() {
       minWidth: MAIN_MIN_W,
       minHeight: MAIN_MIN_H,
       show: false,
+      frame: false,
+      roundedCorners: true,
       title: 'WHENNOTE',
       backgroundColor: '#16171c',
       autoHideMenuBar: true,

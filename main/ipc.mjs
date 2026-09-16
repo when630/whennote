@@ -148,6 +148,9 @@ export function registerIpc(ctx) {
   ipcMain.on('win:hide', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.hide();
   });
+  ipcMain.on('win:minimize', (e) => {
+    BrowserWindow.fromWebContents(e.sender)?.minimize();
+  });
   ipcMain.on('app:open', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.hide();
     ctx.showMain(null);

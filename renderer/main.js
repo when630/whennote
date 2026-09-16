@@ -464,6 +464,11 @@ els.pin.addEventListener('click', togglePin);
 els.archive.addEventListener('click', toggleArchive);
 els.remove.addEventListener('click', () => removeNote());
 els.keymapBtn.addEventListener('click', () => toggleKeymap());
+$('winMin').addEventListener('click', () => window.whennote.minimize());
+$('winClose').addEventListener('click', () => {
+  flushSave();
+  window.whennote.hide();
+});
 els.keymap.addEventListener('click', (e) => {
   if (e.target === els.keymap) toggleKeymap(false); // 바깥을 누르면 닫힌다
 });

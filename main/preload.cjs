@@ -33,5 +33,6 @@ contextBridge.exposeInMainWorld('whennote', {
 
   // ── 공통
   hide: () => ipcRenderer.send('win:hide'),
+  minimize: () => ipcRenderer.send('win:minimize'),
   openApp: () => ipcRenderer.send('app:open'),
 });
