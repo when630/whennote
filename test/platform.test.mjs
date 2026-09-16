@@ -16,6 +16,7 @@ const read = (f) => fs.readFileSync(path.join(ROOT, 'main', 'platform', f), 'utf
 const CONTRACT = [
   'name',
   'defaultHotkey',
+  'defaultMainHotkey',
   'hotkeyLabel',
   'firstRunHint',
   'prepareApp',

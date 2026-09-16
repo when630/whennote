@@ -266,6 +266,16 @@
           </div>
         </div>
         <div class="srow">
+          <div class="slabel">메모 창 단축키</div>
+          <div class="sbody">
+            <div class="hotkeyrow">
+              <input id="mainHotkeyIn" type="text" readonly placeholder="여기를 누르고 조합을 누르세요">
+              <button id="mainHotkeyReset" class="sbtn">기본값</button>
+            </div>
+            <div class="shint" id="mainHotkeyHint"></div>
+          </div>
+        </div>
+        <div class="srow">
           <div class="slabel">로그인 시 자동 시작</div>
           <div class="sbody">
             <label class="switch"><input type="checkbox" id="autostart"><span id="autostartLabel"></span></label>
@@ -299,6 +309,7 @@
         <div class="kgrid">
           <div class="ksec">어디서나</div>
           <div><span id="keymapHotkey"></span></div><div>퀵 메모 창 열기 · 닫기</div>
+          <div><span id="keymapMainHotkey"></span></div><div>메모 창 열기 · 닫기</div>
           <div><kbd>Ctrl /</kbd></div><div>이 목록</div>
           <div><kbd>Ctrl ,</kbd></div><div>설정</div>
           <div><kbd>Ctrl Shift A</kbd></div><div>보관함 보기 · 목록으로</div>

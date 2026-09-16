@@ -240,6 +240,8 @@ export function registerIpc(ctx) {
       hotkey: ctx.hotkey ?? platform.defaultHotkey,
       hotkeyLabel: platform.hotkeyLabel(ctx.hotkey ?? platform.defaultHotkey),
       hotkeyOk: ctx.hotkeyOk,
+      mainHotkeyLabel: platform.hotkeyLabel(ctx.mainHotkey ?? platform.defaultMainHotkey),
+      mainHotkeyOk: ctx.mainHotkeyOk,
       platform: platform.name,
       store: { file: ctx.store.file, ok: st.ok, notice: st.notice },
       version: app.getVersion(),
@@ -255,12 +257,17 @@ export function registerIpc(ctx) {
   function settingsView() {
     const st = ctx.store.status();
     const hotkey = ctx.hotkey ?? platform.defaultHotkey;
+    const mainHotkey = ctx.mainHotkey ?? platform.defaultMainHotkey;
     return {
       ok: true,
       hotkey,
       hotkeyLabel: platform.hotkeyLabel(hotkey),
       hotkeyDefault: platform.defaultHotkey,
       hotkeyOk: ctx.hotkeyOk,
+      mainHotkey,
+      mainHotkeyLabel: platform.hotkeyLabel(mainHotkey),
+      mainHotkeyDefault: platform.defaultMainHotkey,
+      mainHotkeyOk: ctx.mainHotkeyOk,
       openAtLogin: platform.getLoginItem(app),
       packaged: app.isPackaged,
       platform: platform.name,
@@ -293,17 +300,23 @@ export function registerIpc(ctx) {
     return { ok: true };
   });
 
-  // PLAT-02: 조합을 바꾸면 그 조합의 등록 성공 여부까지 확인해서 돌려준다.
-  ipcMain.handle('hotkey:set', (_e, accel) => {
+  // PLAT-02: 조합을 바꾸면 그 조합의 등록 성공 여부까지 확인해서 돌려준다. which: 'capture' | 'main'.
+  // 실패하면 설정에 저장하지 않고 이전 조합으로 되돌린다 — 저장해 두면 다음 실행에서도 안 잡히는
+  // 조합으로 조용히 시작한다.
+  ipcMain.handle('hotkey:set', (_e, which, accel) => {
     const next = String(accel ?? '').trim();
     if (!next) return { ok: false, error: '조합이 비어 있습니다' };
-    const prev = ctx.hotkey;
-    if (ctx.applyHotkey(next)) {
-      ctx.settings.set('hotkey', next);
+    const key = which === 'main' ? 'main' : 'capture';
+    const other = key === 'main' ? ctx.hotkey : ctx.mainHotkey;
+    if (next === other) return { ok: false, error: '다른 쪽 단축키와 같은 조합입니다' };
+    const prev = { capture: ctx.hotkey, main: ctx.mainHotkey };
+    const res = ctx.applyHotkeys({ ...prev, [key]: next });
+    if (res[key]) {
+      ctx.settings.set(key === 'main' ? 'mainHotkey' : 'hotkey', next);
       ctx.settings.flush();
-      return { ok: true, hotkey: next, label: platform.hotkeyLabel(next) };
+      return { ok: true, which: key, hotkey: next, label: platform.hotkeyLabel(next) };
     }
-    ctx.applyHotkey(prev);
+    ctx.applyHotkeys(prev);
     return { ok: false, error: '그 조합은 다른 앱이 쓰고 있거나 잘못된 형식입니다' };
   });
 

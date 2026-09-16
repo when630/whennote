@@ -36,7 +36,8 @@ contextBridge.exposeInMainWorld('whennote', {
   settingsGet: () => ipcRenderer.invoke('settings:get'),
   settingsAutostart: (on) => ipcRenderer.invoke('settings:autostart', on),
   settingsOpenData: () => ipcRenderer.invoke('settings:openData'),
-  hotkeySet: (accel) => ipcRenderer.invoke('hotkey:set', accel),
+  // which: 'capture'(퀵 메모) | 'main'(메모 창)
+  hotkeySet: (which, accel) => ipcRenderer.invoke('hotkey:set', which, accel),
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
 

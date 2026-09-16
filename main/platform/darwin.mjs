@@ -17,7 +17,9 @@ export default {
   // Command+Alt+Space는 Spotlight 계열과 부딪히는 자리가 많고, 무엇보다
   // 두 OS를 오가는 사람이 손가락을 다시 배우지 않아도 된다. 어차피 PLAT-02로
   // 바꿀 수 있고, 등록 실패는 화면에 드러난다.
-  defaultHotkey: 'Control+Alt+N',
+  defaultHotkey: 'Control+N',
+  // 메인 창(검색·편집) 토글. 퀵 메모는 Ctrl+N, 메모 창은 Alt를 더한 Ctrl+Alt+N (2026-09-16 사용자 결정).
+  defaultMainHotkey: 'Control+Alt+N',
 
   // macOS 자동 업데이트는 **코드 서명이 필수**다(electron-builder 공식 문서 명시).
   // Squirrel.Mac이 서명을 확인하고 거부하므로, 미서명 배포에서는 내려받아 설치하는

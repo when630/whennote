@@ -107,6 +107,8 @@ export function bootstrap() {
     quitting: false,
     hotkeyOk: false,
     hotkey: null,
+    mainHotkey: null,
+    mainHotkeyOk: false,
     // 이번 실행에서 즉시 반영에 실패한 캡처 수 — 큐 줄 수가 아니다
     pending: 0,
     // 퀵캡처 항상-위(CAP-06). 켜져 있으면 blur로 닫지 않는다.
@@ -306,7 +308,12 @@ export function bootstrap() {
     ctx.tray.setToolTip(`WHENNOTE${bits.length ? ' — ' + bits.join(' · ') : ''}`);
     ctx.tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: '메모 열기', click: () => showMain() },
+        {
+          label: ctx.mainHotkeyOk
+            ? `메모 열기 (${platform.hotkeyLabel(ctx.mainHotkey)})`
+            : '메모 열기 — 단축키 등록 실패! (설정에서 다른 조합으로)',
+          click: () => showMain(),
+        },
         {
           label: ctx.hotkeyOk
             ? `퀵 메모 (${platform.hotkeyLabel(ctx.hotkey)})`
@@ -383,23 +390,29 @@ export function bootstrap() {
       }
       showCapture();
     };
-    ctx.applyHotkey = (accel) => {
-      globalShortcut.unregisterAll();
-      const next = accel || ctx.settings.get('hotkey') || platform.defaultHotkey;
-      let ok = false;
+    // 전역 단축키 둘: 퀵 메모(hotkey)와 메모 창(mainHotkey). 둘 다 여기서만 등록한다 — 설정에서 하나를
+    // 바꿔도 같은 함수를 부르므로 "바꾼 조합이 실제로 잡혔는지"가 처음 등록과 같은 방식으로 확인된다(PLAT-02).
+    // 같은 조합을 둘에 주면 뒤에 등록하는 쪽이 실패해 화면에 드러난다.
+    const register = (accel, handler) => {
       try {
-        ok = globalShortcut.register(next, onHotkey) && globalShortcut.isRegistered(next);
+        return globalShortcut.register(accel, handler) && globalShortcut.isRegistered(accel);
       } catch {
-        ok = false;
+        return false; // 조합 문자열 자체가 잘못된 경우 register가 던진다
       }
-      ctx.hotkey = next;
-      ctx.hotkeyOk = ok;
-      refreshTrayMenu();
-      return ok;
     };
-    ctx.applyHotkey();
-    if (!ctx.hotkeyOk) {
-      ctx.notify('단축키를 등록하지 못했습니다', `${platform.hotkeyLabel(ctx.hotkey)} 를 다른 앱이 쓰고 있습니다 — 설정에서 다른 조합으로 바꿔 주세요`);
+    ctx.applyHotkeys = ({ capture, main } = {}) => {
+      globalShortcut.unregisterAll();
+      ctx.hotkey = capture || ctx.settings.get('hotkey') || platform.defaultHotkey;
+      ctx.mainHotkey = main || ctx.settings.get('mainHotkey') || platform.defaultMainHotkey;
+      ctx.hotkeyOk = register(ctx.hotkey, onHotkey);
+      ctx.mainHotkeyOk = ctx.mainHotkey !== ctx.hotkey && register(ctx.mainHotkey, toggleMain);
+      refreshTrayMenu();
+      return { capture: ctx.hotkeyOk, main: ctx.mainHotkeyOk };
+    };
+    ctx.applyHotkeys();
+    const failed = [!ctx.hotkeyOk && `퀵 메모 ${platform.hotkeyLabel(ctx.hotkey)}`, !ctx.mainHotkeyOk && `메모 창 ${platform.hotkeyLabel(ctx.mainHotkey)}`].filter(Boolean);
+    if (failed.length) {
+      ctx.notify('단축키를 등록하지 못했습니다', `${failed.join(', ')} 를 다른 앱이 쓰고 있습니다 — 설정에서 다른 조합으로 바꿔 주세요`);
     }
     setupUpdater(ctx);
     if (CHECK_UPDATE) {

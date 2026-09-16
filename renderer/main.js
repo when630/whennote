@@ -37,6 +37,7 @@ const els = {
   togglePreview: $('togglePreview'), pin: $('pin'), archive: $('archive'), remove: $('remove'),
   left: document.querySelector('.left'), archToggle: $('archToggle'), order: $('order'),
   settings: $('settings'), hotkeyIn: $('hotkeyIn'), hotkeyHint: $('hotkeyHint'), hotkeyReset: $('hotkeyReset'),
+  mainHotkeyIn: $('mainHotkeyIn'), mainHotkeyHint: $('mainHotkeyHint'), mainHotkeyReset: $('mainHotkeyReset'),
   autostart: $('autostart'), autostartLabel: $('autostartLabel'), autostartHint: $('autostartHint'),
   dataLine: $('dataLine'), dataFile: $('dataFile'), openData: $('openData'), dataHint: $('dataHint'),
   dataExport: $('dataExport'), dataExportMd: $('dataExportMd'), dataImport: $('dataImport'),
@@ -53,9 +54,21 @@ const state = {
   preview: true, // 기본 보기 모드. openNote가 열 때마다 정한다
   dirty: false,
   hotkeyLabel: '',
+  mainHotkeyLabel: '',
   archived: false, // 보관함 보기 — 아카이브한 메모만 본다
   hotkeyDefault: '',
+  mainHotkeyDefault: '',
 };
+
+// 설정의 단축키 칸 둘 — 어느 칸에 포커스가 있는지로 어느 단축키를 바꾸는지 안다
+const HOTKEY_FIELDS = {
+  capture: { input: 'hotkeyIn', hint: 'hotkeyHint', reset: 'hotkeyReset', def: 'hotkeyDefault', what: '퀵 메모' },
+  main: { input: 'mainHotkeyIn', hint: 'mainHotkeyHint', reset: 'mainHotkeyReset', def: 'mainHotkeyDefault', what: '메모 창' },
+};
+function hotkeyFieldFocused() {
+  for (const [which, f] of Object.entries(HOTKEY_FIELDS)) if (document.activeElement === els[f.input]) return which;
+  return null;
+}
 
 const SAVE_MS = 400;
 let saveTimer = null;
@@ -489,11 +502,17 @@ async function renderSettings() {
   const s = await window.whennote.settingsGet();
   if (!s.ok) return;
   state.hotkeyDefault = s.hotkeyDefault;
-  els.hotkeyIn.value = s.hotkeyLabel;
-  els.hotkeyHint.className = 'shint' + (s.hotkeyOk ? '' : ' warn');
-  text(els.hotkeyHint, s.hotkeyOk
-    ? '칸을 누른 뒤 원하는 조합을 누르면 바로 바뀝니다. Ctrl·Alt 중 하나는 들어가야 합니다.'
-    : '이 조합은 다른 앱이 쓰고 있어 잡히지 않았습니다 — 칸을 누르고 다른 조합을 누르세요.');
+  state.mainHotkeyDefault = s.mainHotkeyDefault;
+  const fill = (which, label, ok) => {
+    const f = HOTKEY_FIELDS[which];
+    els[f.input].value = label;
+    els[f.hint].className = 'shint' + (ok ? '' : ' warn');
+    text(els[f.hint], ok
+      ? '칸을 누른 뒤 원하는 조합을 누르면 바로 바뀝니다. Ctrl·Alt 중 하나는 들어가야 합니다.'
+      : '이 조합은 다른 앱이 쓰고 있어 잡히지 않았습니다 — 칸을 누르고 다른 조합을 누르세요.');
+  };
+  fill('capture', s.hotkeyLabel, s.hotkeyOk);
+  fill('main', s.mainHotkeyLabel, s.mainHotkeyOk);
   els.autostart.checked = !!s.openAtLogin;
   text(els.autostartLabel, s.openAtLogin ? '켜짐' : '꺼짐');
   els.autostart.disabled = !s.packaged;
@@ -537,18 +556,29 @@ function acceleratorFrom(e) {
   return [...mods, key].join('+');
 }
 
-async function applyHotkey(accel) {
-  const res = await window.whennote.hotkeySet(accel);
+function showHotkeys(captureLabel, mainLabel) {
+  if (captureLabel) {
+    state.hotkeyLabel = captureLabel;
+    $('keymapHotkey').replaceChildren(el('kbd', null, captureLabel));
+  }
+  if (mainLabel) {
+    state.mainHotkeyLabel = mainLabel;
+    $('keymapMainHotkey').replaceChildren(el('kbd', null, mainLabel));
+  }
+  text(els.footHotkey, `${state.hotkeyLabel} 퀵 메모 · ${state.mainHotkeyLabel} 메모 창`);
+}
+
+async function applyHotkey(which, accel) {
+  const f = HOTKEY_FIELDS[which];
+  const res = await window.whennote.hotkeySet(which, accel);
   if (res.ok) {
-    state.hotkeyLabel = res.label;
-    els.hotkeyIn.value = res.label;
-    els.hotkeyHint.className = 'shint ok';
-    text(els.hotkeyHint, `${res.label} 로 바뀌었습니다 — 지금부터 어디서든 이 조합으로 열립니다.`);
-    text(els.footHotkey, `${res.label} 퀵 메모`);
-    $('keymapHotkey').replaceChildren(el('kbd', null, res.label));
+    els[f.input].value = res.label;
+    els[f.hint].className = 'shint ok';
+    text(els[f.hint], `${res.label} 로 바뀌었습니다 — 지금부터 어디서든 이 조합으로 ${f.what}이 열립니다.`);
+    showHotkeys(which === 'capture' ? res.label : null, which === 'main' ? res.label : null);
   } else {
-    els.hotkeyHint.className = 'shint warn';
-    text(els.hotkeyHint, res.error ?? '그 조합은 쓸 수 없습니다');
+    els[f.hint].className = 'shint warn';
+    text(els[f.hint], res.error ?? '그 조합은 쓸 수 없습니다');
   }
 }
 
@@ -571,9 +601,11 @@ document.addEventListener('keydown', (e) => {
   const inSearch = document.activeElement === els.q;
   const inBody = document.activeElement === els.body;
   // 설정의 단축키 칸에 포커스가 있으면 모든 키는 "조합 입력"이다
-  if (document.activeElement === els.hotkeyIn) {
+  const hk = hotkeyFieldFocused();
+  if (hk) {
+    const f = HOTKEY_FIELDS[hk];
     if (e.key === 'Escape' || e.key === 'Tab') {
-      els.hotkeyIn.blur();
+      els[f.input].blur();
       if (e.key === 'Escape') e.preventDefault();
       return;
     }
@@ -581,10 +613,10 @@ document.addEventListener('keydown', (e) => {
     if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
     const accel = acceleratorFrom(e);
     if (!accel) {
-      els.hotkeyHint.className = 'shint warn';
-      return text(els.hotkeyHint, 'Ctrl 또는 Alt를 함께 눌러야 합니다.');
+      els[f.hint].className = 'shint warn';
+      return text(els[f.hint], 'Ctrl 또는 Alt를 함께 눌러야 합니다.');
     }
-    return applyHotkey(accel);
+    return applyHotkey(hk, accel);
   }
   if (e.key === '/' && (e.ctrlKey || e.metaKey)) {
     e.preventDefault();
@@ -652,7 +684,8 @@ $('winSettings').addEventListener('click', () => toggleSettings());
 els.settings.addEventListener('click', (e) => {
   if (e.target === els.settings) closeSettings();
 });
-els.hotkeyReset.addEventListener('click', () => applyHotkey(state.hotkeyDefault));
+els.hotkeyReset.addEventListener('click', () => applyHotkey('capture', state.hotkeyDefault));
+els.mainHotkeyReset.addEventListener('click', () => applyHotkey('main', state.mainHotkeyDefault));
 els.autostart.addEventListener('change', async () => {
   const res = await window.whennote.settingsAutostart(els.autostart.checked);
   els.autostart.checked = !!res.openAtLogin;
@@ -742,10 +775,12 @@ window.addEventListener('focus', () => {
   if (init.ok) {
     state.hotkeyLabel = init.hotkeyLabel;
     text(els.placeholderHotkey, `${init.hotkeyLabel} 로 어디서든 적을 수 있습니다`);
-    text(els.footHotkey, `${init.hotkeyLabel} 퀵 메모`);
-    $('keymapHotkey').replaceChildren(el('kbd', null, init.hotkeyLabel));
+    showHotkeys(init.hotkeyLabel, init.mainHotkeyLabel);
     if (init.notice) text(els.notice, init.notice);
-    else if (!init.hotkeyOk) text(els.notice, `단축키 ${init.hotkeyLabel} 등록 실패 — 다른 앱이 쓰고 있습니다`);
+    else if (!init.hotkeyOk || !init.mainHotkeyOk) {
+      const bad = [!init.hotkeyOk && `퀵 메모 ${init.hotkeyLabel}`, !init.mainHotkeyOk && `메모 창 ${init.mainHotkeyLabel}`].filter(Boolean);
+      text(els.notice, `단축키 ${bad.join(', ')} 등록 실패 — 설정(Ctrl+,)에서 바꾸세요`);
+    }
     else if (init.store && !init.store.ok) text(els.notice, init.store.notice ?? '저장소를 열지 못했습니다');
   }
   setPreview(true);

@@ -6,8 +6,10 @@ import { nativeImage } from 'electron';
 export default {
   name: 'win32',
 
-  // WHENWORK(Control+Alt+Space)와 같은 손 모양이면서 부딪히지 않는 조합(D-06). macOS와 같은 값을 쓰는 이유는 platform/darwin.mjs에 적었다.
-  defaultHotkey: 'Control+Alt+N',
+  // 퀵 메모는 Ctrl+N — 다른 앱의 '새 파일'과 겹치지만 사용자가 그 조합을 원했다(D-06 개정). 설정에서 바꿀 수 있다.
+  defaultHotkey: 'Control+N',
+  // 메인 창(검색·편집) 토글. 퀵 메모는 Ctrl+N, 메모 창은 Alt를 더한 Ctrl+Alt+N (2026-09-16 사용자 결정).
+  defaultMainHotkey: 'Control+Alt+N',
 
   // Windows NSIS는 서명 없이도 electron-updater가 내려받아 설치한다.
   // (설치 시 SmartScreen이 한 번 더 물을 수 있지만 업데이트 경로 자체는 막히지 않는다)
