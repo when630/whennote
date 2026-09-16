@@ -8,6 +8,8 @@
 <style>
   html, body { height: 100%; overflow: hidden; background: var(--bg-app); }
   body { user-select: none; }
+  /* display:flex 같은 저자 규칙이 UA의 [hidden]을 이긴다 — 안내와 편집 영역이 함께 그려지던 원인 */
+  [hidden] { display: none !important; }
   .app { position: absolute; inset: 0; display: flex; flex-direction: column; }
 
   /* ── 검색창 = 입력창 (MAIN-01) */
@@ -144,7 +146,6 @@
         </div>
         <div class="editor" id="editor" hidden>
           <div class="toolbar">
-            <button id="back" title="목록으로 (Esc)"></button>
             <span class="spacer"></span>
             <span class="saved" id="saved"></span>
             <button id="togglePreview" title="보기 / 편집 (Ctrl+E)"></button>
@@ -161,7 +162,7 @@
     <div class="foot">
       <span><kbd>↑↓</kbd> 이동</span>
       <span><kbd>↵</kbd> 열기</span>
-      <span><kbd>Esc</kbd> 뒤로 · 닫기</span>
+      <span><kbd>Esc</kbd> 검색으로 · 닫기</span>
       <span><kbd>Ctrl E</kbd> 보기</span>
       <span class="spacer"></span>
       <span class="notice" id="notice"></span>

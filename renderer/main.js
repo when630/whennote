@@ -8,7 +8,7 @@ const els = {
   placeholder: $('placeholder'), editor: $('editor'), body: $('body'), preview: $('preview'), meta: $('meta'),
   saved: $('saved'), notice: $('notice'), hotkeyHint: $('hotkeyHint'), footHotkey: $('footHotkey'),
   undo: $('undo'), undoText: $('undoText'), undoBtn: $('undoBtn'),
-  back: $('back'), togglePreview: $('togglePreview'), pin: $('pin'), archive: $('archive'), remove: $('remove'),
+  togglePreview: $('togglePreview'), pin: $('pin'), archive: $('archive'), remove: $('remove'),
 };
 
 const state = {
@@ -31,7 +31,6 @@ let undoTimer = null;
 // ── 아이콘 심기
 $('searchIco').append(ICONS.search(18));
 $('createIco').append(ICONS.plus(14));
-els.back.append(ICONS.back(14), document.createTextNode('목록'));
 els.pin.append(ICONS.pin(14));
 els.archive.append(ICONS.archive(14));
 els.remove.append(ICONS.trash(14));
@@ -379,7 +378,11 @@ document.addEventListener('keydown', (e) => {
   const inBody = document.activeElement === els.body;
   if (e.key === 'Escape') {
     e.preventDefault();
-    if (state.note) return closeNote();
+    // 목록은 늘 왼쪽에 있으니 "뒤로"가 없다. 본문에서는 검색창으로, 검색창에서는 검색어 지우기, 그다음 창 닫기.
+    if (!inSearch) {
+      flushSave();
+      return els.q.focus();
+    }
     if (els.q.value) {
       els.q.value = '';
       return runSearch().then(renderTags);
@@ -409,7 +412,6 @@ document.addEventListener('keydown', (e) => {
 els.body.addEventListener('input', markDirty);
 els.body.addEventListener('blur', () => flushSave());
 els.create.addEventListener('click', createFromQuery);
-els.back.addEventListener('click', closeNote);
 els.togglePreview.addEventListener('click', togglePreview);
 els.pin.addEventListener('click', togglePin);
 els.archive.addEventListener('click', toggleArchive);
