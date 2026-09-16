@@ -3,6 +3,7 @@
 // 전역 함수 runSearch·openNote·closeNote·togglePreview와 state는 스모크 프로브(main/lifecycle.mjs)가
 // 부른다 — 이름을 바꾸면 프로브도 함께 바꾼다.
 const $ = (id) => document.getElementById(id);
+const { pickImage } = window.VIEW;
 const els = {
   q: $('q'), tags: $('tags'), create: $('create'), createLabel: $('createLabel'), count: $('count'), list: $('list'),
   placeholder: $('placeholder'), editor: $('editor'), body: $('body'), preview: $('preview'), meta: $('meta'),
@@ -638,13 +639,11 @@ els.dataImport.addEventListener('click', async () => {
 // MAIN-08: 본문에 이미지를 붙이면 파일로 저장하고 커서 자리에 마크다운을 넣는다. 글은 평소대로 붙는다.
 els.body.addEventListener('paste', async (e) => {
   if (!state.note) return;
-  const item = [...(e.clipboardData?.items ?? [])].find((it) => it.type.startsWith('image/'));
-  if (!item) return;
-  e.preventDefault();
-  const blob = item.getAsFile();
+  const blob = pickImage(e.clipboardData);
   if (!blob) return;
+  e.preventDefault();
   const bytes = await blob.arrayBuffer();
-  const res = await window.whennote.attach(state.note.id, { type: item.type, bytes });
+  const res = await window.whennote.attach(state.note.id, { type: blob.type, bytes });
   if (!res.ok) return flashNotice(res.error ?? '이미지를 붙이지 못했습니다');
   const ta = els.body;
   const start = ta.selectionStart ?? ta.value.length;

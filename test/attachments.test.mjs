@@ -64,3 +64,17 @@ test('listOlderThan은 mtime이 오래된 것만 — 방금 붙인 파일은 고
   assert.deepEqual(a.listOlderThan(86400_000), [old.file]);
   assert.ok(!a.listOlderThan(86400_000).includes(fresh.file));
 });
+
+test('sniffImageExt는 MIME이 아니라 바이트로 형식을 가른다', async () => {
+  const { sniffImageExt } = await import('../main/attachments.mjs');
+  const pad = (head) => Buffer.concat([head, Buffer.alloc(16)]);
+  assert.equal(sniffImageExt(pad(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))), 'png');
+  assert.equal(sniffImageExt(pad(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))), 'jpg');
+  assert.equal(sniffImageExt(pad(Buffer.from('GIF89a'))), 'gif');
+  assert.equal(sniffImageExt(Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')])), 'webp');
+  assert.equal(sniffImageExt(pad(Buffer.from('BM'))), 'bmp');
+  assert.equal(sniffImageExt(pad(Buffer.from('hello world'))), null);
+  assert.equal(sniffImageExt(Buffer.from([1, 2])), null, '너무 짧으면 모른다');
+  // 실제로 구운 아이콘도 png로 읽힌다
+  assert.equal(sniffImageExt(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..', 'build', 'icon.png'))), 'png');
+});

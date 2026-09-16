@@ -14,6 +14,19 @@ export function isSafeName(name) {
   return SAFE_NAME.test(String(name));
 }
 
+// 바이트 앞머리로 이미지 형식을 알아낸다. 클립보드가 알려주는 MIME은 앱마다 제각각이라
+// (image/x-png, 빈 문자열, 파일 항목 등) 이름을 믿지 않고 내용을 본다. 모르면 null.
+export function sniffImageExt(buf) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf ?? []);
+  if (b.length < 12) return null;
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'png';
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpg';
+  if (b.toString('ascii', 0, 4) === 'GIF8') return 'gif';
+  if (b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+  if (b[0] === 0x42 && b[1] === 0x4d) return 'bmp';
+  return null;
+}
+
 export function createAttachments(dir) {
   fs.mkdirSync(dir, { recursive: true });
 

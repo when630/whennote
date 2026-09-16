@@ -1,6 +1,7 @@
 // 퀵 메모 — 저장 버튼이 없다(CAP-02). Esc·blur·창 닫기·단축키 재입력이 모두 "저장하고 닫기"다.
 // Enter는 언제나 줄바꿈이다(D-05). 메인 프로세스는 본문을 갖고 있지 않으므로 닫아야 할 때
 // capture:flush를 보내고, 여기서 저장한 뒤 hide()를 부른다.
+const { pickImage } = window.VIEW;
 const input = document.getElementById('in');
 const msg = document.getElementById('msg');
 const pinBtn = document.getElementById('pin');
@@ -52,7 +53,7 @@ async function togglePin() {
 }
 
 // CAP-07: 창이 열릴 때 클립보드를 한 번 들여다보고 한 줄 제안한다. 붙이지는 않는다 —
-// 사용자가 Ctrl+V를 누르면 textarea가 평소처럼 붙인다. 이미지는 메인 창에서만 붙일 수 있다(MAIN-08).
+// 사용자가 Ctrl+V를 누르면 textarea가 평소처럼 붙인다(이미지는 아래 paste 핸들러가 첨부로).
 const clipBox = document.getElementById('clip');
 const clipLabel = document.getElementById('clipLabel');
 const clipPrev = document.getElementById('clipPrev');
@@ -103,13 +104,11 @@ document.addEventListener('keydown', (e) => {
 
 // 이미지를 붙이면 파일로 먼저 저장하고 마크다운 참조를 넣는다. 메모에 묶이는 것은 저장될 때다(D-11 개정).
 input.addEventListener('paste', async (e) => {
-  const item = [...(e.clipboardData?.items ?? [])].find((it) => it.type.startsWith('image/'));
-  if (!item) return;
-  e.preventDefault();
-  const blob = item.getAsFile();
+  const blob = pickImage(e.clipboardData);
   if (!blob) return;
+  e.preventDefault();
   const bytes = await blob.arrayBuffer();
-  const res = await window.whennote.attach(null, { type: item.type, bytes });
+  const res = await window.whennote.attach(null, { type: blob.type, bytes });
   if (!res.ok) return showMsg('warn', res.error ?? '이미지를 붙이지 못했습니다', 2500);
   const start = input.selectionStart ?? input.value.length;
   const end = input.selectionEnd ?? start;

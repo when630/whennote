@@ -80,5 +80,22 @@
       : `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
   }
 
-  root.VIEW = { toChoseong, highlightRanges, splitByRanges, relativeTime };
+  const IMAGE_NAME = /\.(png|jpe?g|gif|webp|bmp)$/i;
+
+  // 붙여넣기(DataTransfer)에서 이미지 파일 하나를 고른다. 형식(type)이 image/*이거나, 형식이 비어 있어도
+  // 파일 이름이 이미지 확장자면 이미지로 본다 — 캡처 도구·탐색기·브라우저가 주는 모양이 제각각이다.
+  // 진짜 형식 판별은 메인 프로세스가 바이트를 보고 한다.
+  function pickImage(dt) {
+    if (!dt) return null;
+    const isImage = (type, name) => /^image\//i.test(type || '') || IMAGE_NAME.test(name || '');
+    for (const it of dt.items ?? []) {
+      if (it.kind !== 'file') continue;
+      const f = it.getAsFile?.();
+      if (f && isImage(f.type || it.type, f.name)) return f;
+    }
+    for (const f of dt.files ?? []) if (isImage(f.type, f.name)) return f;
+    return null;
+  }
+
+  root.VIEW = { toChoseong, highlightRanges, splitByRanges, relativeTime, pickImage };
 })(globalThis);

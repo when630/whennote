@@ -90,3 +90,16 @@ test('inline은 첨부 폴더 안의 이미지만 그림으로, 다른 경로는
   assert.deepEqual(parts[1], { text: '스크린샷', kind: 'image', file: '11111111-1111-4111-8111-111111111111.png' });
   assert.deepEqual(parts[3], { text: '![x](https://a/b.png)' });
 });
+
+test('pickImage는 형식이 image/*인 파일 항목, 형식이 비어도 이름이 이미지인 항목을 고르고 글만 있으면 null', () => {
+  const { pickImage } = globalThis.VIEW;
+  const file = (type, name) => ({ type, name });
+  const item = (kind, type, f) => ({ kind, type, getAsFile: () => f });
+  const png = file('image/png', 'image.png');
+  assert.equal(pickImage({ items: [item('string', 'text/plain', null), item('file', 'image/png', png)], files: [] }), png);
+  const noType = file('', 'screenshot.PNG');
+  assert.equal(pickImage({ items: [item('file', '', noType)], files: [] }), noType);
+  assert.equal(pickImage({ items: [item('string', 'text/plain', null)], files: [] }), null);
+  assert.equal(pickImage({ items: [], files: [png] }), png, 'items가 비어도 files를 본다');
+  assert.equal(pickImage(null), null);
+});

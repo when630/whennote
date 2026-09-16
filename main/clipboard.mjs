@@ -5,7 +5,12 @@
 // 지금 값이 문자열이든 Promise든 await 한 번으로 같아진다.
 import { clipboard } from 'electron';
 
-const IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp' };
+const IMAGE_EXT = {
+  'image/png': 'png', 'image/x-png': 'png', 'image/apng': 'png',
+  'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/pjpeg': 'jpg',
+  'image/gif': 'gif', 'image/webp': 'webp',
+  'image/bmp': 'bmp', 'image/x-bmp': 'bmp', 'image/x-ms-bmp': 'bmp',
+};
 
 export async function readText() {
   try {
@@ -41,7 +46,7 @@ export async function readImagePng() {
 }
 
 export function extensionFor(mime) {
-  return IMAGE_EXT[String(mime).toLowerCase()] ?? null;
+  return IMAGE_EXT[String(mime ?? '').toLowerCase().split(';')[0].trim()] ?? null;
 }
 
 const URL_RE = /^https?:\/\/\S+$/i;

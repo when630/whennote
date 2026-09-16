@@ -1,5 +1,5 @@
 // main/ipc.mjs — 모든 ipcMain 핸들러. 채널 목록은 docs/03_기술_스펙.md §6.
-import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog, nativeImage } from 'electron';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -8,7 +8,7 @@ import { updateLine } from './update.mjs';
 import * as clip from './clipboard.mjs';
 import { extensionFor } from './clipboard.mjs';
 import { validateExport, safeFilename, noteToMarkdown, referencedAttachments } from './export.mjs';
-import { ATTACH_DIR } from './attachments.mjs';
+import { ATTACH_DIR, sniffImageExt } from './attachments.mjs';
 
 // 캡처 저장의 단일 경로(WHENWORK D-01/D-03 승계). capture:save·note:create·강제종료 스모크의
 // 주입 모드가 모두 이 함수를 부른다 — 경로가 하나여야 테스트가 실경로를 밟는다.
@@ -117,10 +117,17 @@ export function registerIpc(ctx) {
   // 저장되지 않은 채 버려진 파일은 하루 뒤 고아 정리가 치운다. 10MB를 넘으면 저장은 하되 large로 알린다(D-08).
   ipcMain.handle('note:attach', (_e, _noteId, { type, bytes } = {}) => {
     try {
-      const ext = extensionFor(type);
-      if (!ext) return { ok: false, error: '지원하지 않는 이미지 형식입니다' };
-      const buf = toBuffer(bytes);
+      let buf = toBuffer(bytes);
       if (!buf || !buf.length) return { ok: false, error: '이미지 자료가 비어 있습니다' };
+      // 형식은 내용으로 판별한다 — 클립보드의 MIME(image/x-png, 빈 값 등)은 믿을 게 못 된다.
+      // 그래도 모르는 형식이면 Electron이 디코딩할 수 있는지 보고, 되면 PNG로 저장한다.
+      let ext = sniffImageExt(buf) ?? extensionFor(type);
+      if (!ext) {
+        const img = nativeImage.createFromBuffer(buf);
+        if (img.isEmpty()) return { ok: false, error: `지원하지 않는 이미지 형식입니다 (${type || '형식 정보 없음'})` };
+        buf = img.toPNG();
+        ext = 'png';
+      }
       const saved = ctx.attachments.save(buf, ext);
       return { ok: true, file: saved.file, large: saved.large, markdown: `![이미지](${ATTACH_DIR}/${saved.file})` };
     } catch {
