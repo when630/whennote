@@ -1,11 +1,12 @@
 // main/lifecycle.mjs — 앱 수명·창·트레이·단축키·ctx 생성. 구조는 WHENWORK main/lifecycle.mjs(34d5f3b)를
 // 따르고, 창 둘(메인·퀵캡처)의 크기·동작만 메모용이다(docs/03_기술_스펙 §7).
-import { app, BrowserWindow, Tray, Menu, globalShortcut, screen, Notification } from 'electron';
+import { app, BrowserWindow, Tray, Menu, globalShortcut, screen, Notification, protocol, net } from 'electron';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { platform } from './platform/index.mjs';
 import { createQueue } from './queue.mjs';
 import { createStore } from './store.mjs';
+import { createAttachments, ATTACH_DIR } from './attachments.mjs';
 import { createSettings } from './settings.mjs';
 import { pickPosition } from './place.mjs';
 import { scheduleJobs } from './jobs.mjs';
@@ -32,6 +33,12 @@ function argValue(prefix) {
 const SMOKE_DATA = argValue('--smoke-data=');
 const INJECT_CAPTURE = argValue('--inject-capture=');
 const CHECK_UPDATE = process.argv.includes('--check-update');
+
+// 첨부 이미지를 화면에 보여주는 스킴(D-11). 렌더러는 file://로 떠 있어 CSP 'self'가 첨부 폴더를
+// 가리키지 못하고, file: 전체를 열면 아무 파일이나 읽힌다. 스킴 하나가 첨부 폴더 안의 이름만 낸다.
+// registerSchemesAsPrivileged는 ready 전에 딱 한 번만 부를 수 있다 — 모듈 로드 시점에 한다.
+const ATTACH_SCHEME = 'wn-attach';
+protocol.registerSchemesAsPrivileged([{ scheme: ATTACH_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
 // 스모크에서 메인 창 렌더러 안에서 돌리는 점검. 검색→열기→보기 전환→닫기를 한 바퀴 돈다.
 //
@@ -135,6 +142,7 @@ export function bootstrap() {
   ctx.queue = createQueue(path.join(app.getPath('userData'), 'queue.jsonl'));
   ctx.settings = createSettings(path.join(app.getPath('userData'), 'settings.json'));
   ctx.store = createStore(path.join(app.getPath('userData'), 'store.sqlite'));
+  ctx.attachments = createAttachments(path.join(app.getPath('userData'), ATTACH_DIR));
   registerIpc(ctx);
 
   // ── 창
@@ -348,6 +356,19 @@ export function bootstrap() {
   app.setName('whennote');
 
   app.whenReady().then(async () => {
+    // wn-attach://files/<이름> → attachments/<이름>. 이름 규칙(UUID.확장자)에 맞지 않거나 폴더 밖이면 400.
+    protocol.handle(ATTACH_SCHEME, (req) => {
+      let name = '';
+      try {
+        name = path.basename(decodeURIComponent(new URL(req.url).pathname));
+      } catch {
+        name = '';
+      }
+      const full = ctx.attachments.resolve(name);
+      if (!full) return new Response('bad', { status: 400 });
+      return net.fetch(pathToFileURL(full).toString());
+    });
+
     ctx.tray = new Tray(platform.trayImage(ROOT));
     ctx.tray.on('click', toggleMain);
     // 단축키는 퀵캡처 토글 — 열려 있으면 저장하고 닫고, 없으면 연다

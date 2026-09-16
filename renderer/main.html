@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' wn-attach:">
 <title>WHENNOTE</title>
 <link rel="stylesheet" href="tokens.css">
 <style>
@@ -122,6 +122,7 @@
   .preview a.wikilink { color: var(--accent); text-decoration: none; border-bottom: 1px solid rgba(122,162,247,.4); cursor: pointer; }
   .preview a.wikilink.missing { color: var(--text-muted); border-bottom-style: dashed; }
   .preview a.tag { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .preview img { display: block; max-width: 100%; max-height: 480px; border-radius: var(--r-sm); border: 1px solid var(--border); margin: 6px 0 12px; }
   .meta { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: var(--fs-xs); }
   .meta .dot { width: 3px; height: 3px; border-radius: 99px; background: var(--text-muted); }
   .meta .backlink { color: var(--accent); cursor: pointer; }
@@ -267,7 +268,9 @@
           <div class="sbody">
             <div id="dataLine"></div>
             <div class="shint"><span id="dataFile"></span></div>
-            <div><button id="openData" class="sbtn">폴더 열기</button></div>
+            <div class="btnrow"><button id="openData" class="sbtn">폴더 열기</button><button id="dataExport" class="sbtn">JSON으로 내보내기</button><button id="dataExportMd" class="sbtn">마크다운 폴더로 내보내기</button></div>
+            <div class="btnrow"><button id="dataImport" class="sbtn">JSON 가져오기…</button></div>
+            <div class="shint" id="dataHint">가져오기는 지금 데이터를 파일의 내용으로 갈아끼웁니다. 직전 상태는 backups/ 에 자동 저장됩니다.</div>
           </div>
         </div>
         <div class="srow">

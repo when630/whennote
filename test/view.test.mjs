@@ -84,3 +84,9 @@ test('닫히지 않은 코드 블록도 잃지 않고 보여준다', () => {
   assert.equal(blocks.length, 1);
   assert.deepEqual(blocks[0].lines, ['미완']);
 });
+
+test('inline은 첨부 폴더 안의 이미지만 그림으로, 다른 경로는 글자로 둔다 (D-11)', () => {
+  const parts = inline('앞 ![스크린샷](attachments/11111111-1111-4111-8111-111111111111.png) 뒤 ![x](https://a/b.png)');
+  assert.deepEqual(parts[1], { text: '스크린샷', kind: 'image', file: '11111111-1111-4111-8111-111111111111.png' });
+  assert.deepEqual(parts[3], { text: '![x](https://a/b.png)' });
+});

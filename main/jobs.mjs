@@ -18,17 +18,35 @@ export function scheduleJobs(ctx) {
     ctx.refreshTrayMenu();
   }
 
+  // 표에서 지운 뒤 그 메모의 첨부 파일도 지운다(STOR-04). 파일 삭제 실패는 다음 기동이 다시 본다 —
+  // 표 행은 이미 없으므로 고아 파일 정리(purgeOrphans)가 집어 간다.
   function purgeOnce() {
     try {
-      ctx.store.purgeDeleted(PURGE_DAYS);
+      const { files } = ctx.store.purgeDeleted(PURGE_DAYS);
+      ctx.attachments?.remove(files);
     } catch {
       // 실패해도 다음 기동이 다시 시도한다
     }
   }
 
-  ctx.jobs = { replayQueueOnce, purgeOnce };
+  // 표에 없는 첨부 파일(가져오기 실패·삭제 실패 등으로 남은 것)을 치운다
+  function purgeOrphans() {
+    try {
+      const known = new Set(ctx.store.attachmentFiles());
+      ctx.attachments?.remove(ctx.attachments.list().filter((f) => !known.has(f)));
+    } catch {
+      // 조용히 — 다음 기동에
+    }
+  }
+
+  ctx.jobs = { replayQueueOnce, purgeOnce, purgeOrphans };
 
   // 큐 반영은 !SMOKE 가드 밖이다 — 강제종료 스모크가 두 번째 기동에서 이 반영을 본다.
   replayQueueOnce();
-  if (!ctx.SMOKE) setTimeout(purgeOnce, PURGE_DELAY_MS);
+  if (!ctx.SMOKE) {
+    setTimeout(() => {
+      purgeOnce();
+      purgeOrphans();
+    }, PURGE_DELAY_MS);
+  }
 }

@@ -51,11 +51,43 @@ async function togglePin() {
   showMsg('', pinned ? '항상 위 — 다른 창을 눌러도 남습니다' : '', pinned ? 2500 : 0);
 }
 
+// CAP-07: 창이 열릴 때 클립보드를 한 번 들여다보고 한 줄 제안한다. 붙이지는 않는다 —
+// 사용자가 Ctrl+V를 누르면 textarea가 평소처럼 붙인다. 이미지는 메인 창에서만 붙일 수 있다(MAIN-08).
+const clipBox = document.getElementById('clip');
+const clipLabel = document.getElementById('clipLabel');
+const clipPrev = document.getElementById('clipPrev');
+const clipKey = document.getElementById('clipKey');
+const clipIco = document.getElementById('clipIco');
+clipIco.append(ICONS.clipboard(15));
+
+async function suggestClipboard() {
+  clipBox.hidden = true;
+  if (input.value.trim()) return; // 이미 적고 있으면 방해하지 않는다
+  const res = await window.whennote.clipboardPeek();
+  const peek = res?.peek;
+  if (!peek) return;
+  if (peek.kind === 'image') {
+    clipLabel.textContent = '클립보드에 이미지가 있어요';
+    clipPrev.textContent = '메인 창에서 열면 Ctrl+V로 붙일 수 있습니다';
+    clipKey.textContent = 'Ctrl ↵';
+  } else {
+    clipLabel.textContent = peek.kind === 'url' ? '클립보드에 링크가 있어요' : '클립보드에 글이 있어요';
+    clipPrev.textContent = peek.preview;
+    clipKey.textContent = 'Ctrl V';
+  }
+  clipBox.hidden = false;
+}
+
 window.whennote.onReset(() => {
   busy = false;
   showMsg('', '');
   input.focus();
+  suggestClipboard();
 });
+input.addEventListener('input', () => {
+  clipBox.hidden = true; // 적기 시작하면 제안은 사라진다
+});
+suggestClipboard();
 window.whennote.onFlush(() => flush());
 
 document.addEventListener('keydown', (e) => {

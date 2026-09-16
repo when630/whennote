@@ -12,7 +12,8 @@ const els = {
   left: document.querySelector('.left'), archToggle: $('archToggle'), order: $('order'),
   settings: $('settings'), hotkeyIn: $('hotkeyIn'), hotkeyHint: $('hotkeyHint'), hotkeyReset: $('hotkeyReset'),
   autostart: $('autostart'), autostartLabel: $('autostartLabel'), autostartHint: $('autostartHint'),
-  dataLine: $('dataLine'), dataFile: $('dataFile'), openData: $('openData'),
+  dataLine: $('dataLine'), dataFile: $('dataFile'), openData: $('openData'), dataHint: $('dataHint'),
+  dataExport: $('dataExport'), dataExportMd: $('dataExportMd'), dataImport: $('dataImport'),
   versionLine: $('versionLine'), updateLine: $('updateLine'), updateCheck: $('updateCheck'), updateInstall: $('updateInstall'),
 };
 
@@ -610,6 +611,54 @@ els.autostart.addEventListener('change', async () => {
   text(els.autostartHint, res.ok ? '' : '켜지 못했습니다 — 시스템 설정의 로그인 항목에서 직접 추가해 주세요.');
 });
 els.openData.addEventListener('click', () => window.whennote.settingsOpenData());
+
+function dataResult(res, done) {
+  els.dataHint.className = 'shint' + (res.ok ? ' ok' : res.canceled ? '' : ' warn');
+  if (res.canceled) return text(els.dataHint, '취소했습니다.');
+  text(els.dataHint, res.ok ? done.call(null, res) : res.error ?? '실패했습니다');
+}
+els.dataExport.addEventListener('click', async () => {
+  dataResult(await window.whennote.dataExport(), (r) => `메모 ${r.note}개를 내보냈습니다${r.images ? ` · 이미지 ${r.images}개는 옆 attachments/ 폴더에` : ''}.`);
+});
+els.dataExportMd.addEventListener('click', async () => {
+  dataResult(await window.whennote.dataExportMarkdown(), (r) => `메모 ${r.note}개를 .md 파일로 내보냈습니다${r.images ? ` · 이미지 ${r.images}개 포함` : ''}.`);
+});
+els.dataImport.addEventListener('click', async () => {
+  const res = await window.whennote.dataImport();
+  dataResult(res, (r) => `메모 ${r.note}개를 가져왔습니다. 직전 데이터는 backups/${r.backup ?? ''} 에 있습니다.`);
+  if (res.ok) {
+    await renderSettings();
+    els.dataHint.className = 'shint ok';
+    text(els.dataHint, `메모 ${res.note}개를 가져왔습니다. 직전 데이터는 backups/${res.backup ?? ''} 에 있습니다.`);
+    runSearch();
+    loadTags();
+  }
+});
+
+// MAIN-08: 본문에 이미지를 붙이면 파일로 저장하고 커서 자리에 마크다운을 넣는다. 글은 평소대로 붙는다.
+els.body.addEventListener('paste', async (e) => {
+  if (!state.note) return;
+  const item = [...(e.clipboardData?.items ?? [])].find((it) => it.type.startsWith('image/'));
+  if (!item) return;
+  e.preventDefault();
+  const blob = item.getAsFile();
+  if (!blob) return;
+  const bytes = await blob.arrayBuffer();
+  const res = await window.whennote.attach(state.note.id, { type: item.type, bytes });
+  if (!res.ok) return flashNotice(res.error ?? '이미지를 붙이지 못했습니다');
+  const ta = els.body;
+  const start = ta.selectionStart ?? ta.value.length;
+  const end = ta.selectionEnd ?? start;
+  const before = ta.value.slice(0, start);
+  const after = ta.value.slice(end);
+  const pad = before && !before.endsWith('\n') ? '\n' : '';
+  const insert = `${pad}${res.markdown}\n`;
+  ta.value = before + insert + after;
+  const cursor = before.length + insert.length;
+  ta.setSelectionRange(cursor, cursor);
+  markDirty();
+  if (res.large) flashNotice('10MB가 넘는 이미지입니다 — 저장은 됐지만 파일이 큽니다', 4000);
+});
 els.updateCheck.addEventListener('click', async () => {
   text(els.updateLine, '업데이트 확인 중…');
   renderUpdate(await window.whennote.updateCheck());

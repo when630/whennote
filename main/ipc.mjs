@@ -1,8 +1,14 @@
 // main/ipc.mjs — 모든 ipcMain 핸들러. 채널 목록은 docs/03_기술_스펙.md §6.
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, dialog } from 'electron';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { platform } from './platform/index.mjs';
 import { updateLine } from './update.mjs';
+import * as clip from './clipboard.mjs';
+import { extensionFor } from './clipboard.mjs';
+import { validateExport, safeFilename, noteToMarkdown, referencedAttachments } from './export.mjs';
+import { ATTACH_DIR } from './attachments.mjs';
 
 // 캡처 저장의 단일 경로(WHENWORK D-01/D-03 승계). capture:save·note:create·강제종료 스모크의
 // 주입 모드가 모두 이 함수를 부른다 — 경로가 하나여야 테스트가 실경로를 밟는다.
@@ -59,6 +65,15 @@ export function registerIpc(ctx) {
     return { ok: true, pinned: ctx.capturePinned };
   });
 
+  // CAP-07: 퀵캡처가 열릴 때 클립보드에 뭐가 있는지 한 줄. 붙이는 건 사용자의 Ctrl+V다.
+  ipcMain.handle('capture:clipboard', async () => {
+    try {
+      return { ok: true, peek: await clip.peek() };
+    } catch {
+      return { ok: true, peek: null };
+    }
+  });
+
   // 저장하고 메인 창에서 이어서 편집(CAP-02). 저장이 안 되는 빈 본문이면 창만 연다.
   ipcMain.handle('capture:openInMain', (e, body) => {
     const res = saveCapture(ctx, body);
@@ -95,6 +110,99 @@ export function registerIpc(ctx) {
   }
 
   ipcMain.handle('tag:list', guarded(() => ({ tags: ctx.store.listTags() })));
+
+  // MAIN-08: 렌더러가 붙여넣기에서 잡은 이미지 바이트를 파일로 저장하고 본문에 넣을 마크다운을 돌려준다.
+  // 10MB를 넘으면 저장은 하되 large로 알린다(D-08 — 사용자 파일을 줄이지 않는다).
+  ipcMain.handle('note:attach', (_e, noteId, { type, bytes } = {}) => {
+    try {
+      const ext = extensionFor(type);
+      if (!ext) return { ok: false, error: '지원하지 않는 이미지 형식입니다' };
+      if (!bytes || !(bytes instanceof ArrayBuffer || bytes instanceof Uint8Array)) return { ok: false, error: '이미지 자료가 비어 있습니다' };
+      if (!ctx.store.getNote(noteId)) return { ok: false, error: '메모를 찾지 못했습니다' };
+      const saved = ctx.attachments.save(bytes, ext);
+      ctx.store.addAttachment(noteId, saved.file);
+      return { ok: true, file: saved.file, large: saved.large, markdown: `![이미지](${ATTACH_DIR}/${saved.file})` };
+    } catch {
+      return { ok: false, error: '이미지를 저장하지 못했습니다' };
+    }
+  });
+
+  // ── 내보내기·가져오기 (DATA-01~03). 대화상자 기본 위치는 Electron 43부터 다운로드 폴더다.
+  const stamp = () => new Date().toISOString().slice(0, 10);
+
+  ipcMain.handle('data:export', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    try {
+      const res = await dialog.showSaveDialog(win, {
+        title: '데이터 내보내기',
+        defaultPath: `whennote-${stamp()}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (res.canceled || !res.filePath) return { ok: false, canceled: true };
+      const data = ctx.store.exportAll();
+      fs.writeFileSync(res.filePath, JSON.stringify(data, null, 2), 'utf8');
+      const images = ctx.attachments.copyTo(data.attachment.map((a) => a.file), path.dirname(res.filePath));
+      return { ok: true, note: data.note.length, images };
+    } catch {
+      return { ok: false, error: '내보내기에 실패했습니다' };
+    } finally {
+      win?.focus();
+    }
+  });
+
+  ipcMain.handle('data:import', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    try {
+      const res = await dialog.showOpenDialog(win, {
+        title: '데이터 가져오기 — 지금 데이터는 이 파일의 내용으로 바뀝니다',
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        properties: ['openFile'],
+      });
+      if (res.canceled || !res.filePaths?.[0]) return { ok: false, canceled: true };
+      let parsed;
+      try {
+        parsed = JSON.parse(fs.readFileSync(res.filePaths[0], 'utf8'));
+      } catch {
+        return { ok: false, error: '읽을 수 없는 파일입니다' };
+      }
+      const bad = validateExport(parsed, ctx.store.schemaVersion());
+      if (bad) return { ok: false, error: bad };
+      const out = ctx.store.importAll(parsed);
+      const images = ctx.attachments.importFrom(path.dirname(res.filePaths[0]));
+      ctx.notifyChanged();
+      ctx.refreshTrayMenu();
+      return { ok: true, ...out, images };
+    } catch {
+      return { ok: false, error: '가져오기에 실패했습니다' };
+    } finally {
+      win?.focus();
+    }
+  });
+
+  // 메모 하나 = .md 하나, 태그는 frontmatter. 읽기 전용 내보내기(DATA-03).
+  ipcMain.handle('data:exportMarkdown', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    try {
+      const res = await dialog.showOpenDialog(win, {
+        title: '마크다운으로 내보낼 폴더 — 메모 하나가 파일 하나가 됩니다',
+        properties: ['openDirectory', 'createDirectory'],
+      });
+      if (res.canceled || !res.filePaths?.[0]) return { ok: false, canceled: true };
+      const dir = res.filePaths[0];
+      const notes = ctx.store.allNotes();
+      const files = new Set();
+      for (const n of notes) {
+        fs.writeFileSync(path.join(dir, safeFilename(n.title, n.id)), noteToMarkdown(n, n.tags), 'utf8');
+        for (const f of referencedAttachments(n.body)) files.add(f);
+      }
+      const images = ctx.attachments.copyTo([...files], dir);
+      return { ok: true, note: notes.length, images };
+    } catch {
+      return { ok: false, error: '내보내기에 실패했습니다' };
+    } finally {
+      win?.focus();
+    }
+  });
 
   // ── 창이 처음 뜰 때 필요한 것과 설정 화면이 보는 것
   ipcMain.handle('app:init', () => {

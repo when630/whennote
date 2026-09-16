@@ -2,21 +2,28 @@
 // 체크박스 문법은 특별 취급하지 않는다(할 일은 WHENWORK의 것). parse는 순수 함수(블록 배열)라
 // 검증하기 쉽고, DOM은 render가 만든다(innerHTML 쓰지 않음). WHENWORK renderer/md.js에서 출발.
 (function () {
-  // 인라인: `코드` · **굵게** · [[링크]] · #태그 → [{ text, kind }]
-  const INLINE_RE = /(`[^`\n]+`)|(\*\*[^*\n]+?\*\*)|(\[\[[^\[\]\n]+?\]\])|((?:^|(?<=[^\p{L}\p{N}_#]))#[\p{L}\p{N}_][\p{L}\p{N}_-]*)/gu;
+  // 인라인: ![이미지](attachments/x.png) · `코드` · **굵게** · [[링크]] · #태그 → [{ text, kind }]
+  const INLINE_RE = /(!\[[^\]\n]*\]\([^)\s]+\))|(`[^`\n]+`)|(\*\*[^*\n]+?\*\*)|(\[\[[^\[\]\n]+?\]\])|((?:^|(?<=[^\p{L}\p{N}_#]))#[\p{L}\p{N}_][\p{L}\p{N}_-]*)/gu;
+  // 첨부 폴더 안의 이름만 그림으로 보여준다(D-11). 그 외 경로는 글자 그대로 — CSP가 어차피 막는다.
+  const ATTACH_RE = /^attachments\/([a-f0-9-]{36}\.[a-z0-9]{1,5})$/;
 
   function inline(text) {
     const parts = [];
     let last = 0;
     for (const m of text.matchAll(INLINE_RE)) {
       if (m.index > last) parts.push({ text: text.slice(last, m.index) });
-      if (m[1]) parts.push({ text: m[1].slice(1, -1), kind: 'code' });
-      else if (m[2]) parts.push({ text: m[2].slice(2, -2), kind: 'bold' });
-      else if (m[3]) parts.push({ text: m[3].slice(2, -2).trim(), kind: 'link' });
-      else if (m[4]) {
-        const tag = m[4].slice(1);
-        if (/^\d+$/.test(tag)) parts.push({ text: m[4] }); // #201은 태그가 아니다
-        else parts.push({ text: m[4], kind: 'tag', tag });
+      if (m[1]) {
+        const im = m[1].match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+        const att = im[2].match(ATTACH_RE);
+        if (att) parts.push({ text: im[1] || '이미지', kind: 'image', file: att[1] });
+        else parts.push({ text: m[1] });
+      } else if (m[2]) parts.push({ text: m[2].slice(1, -1), kind: 'code' });
+      else if (m[3]) parts.push({ text: m[3].slice(2, -2), kind: 'bold' });
+      else if (m[4]) parts.push({ text: m[4].slice(2, -2).trim(), kind: 'link' });
+      else if (m[5]) {
+        const tag = m[5].slice(1);
+        if (/^\d+$/.test(tag)) parts.push({ text: m[5] }); // #201은 태그가 아니다
+        else parts.push({ text: m[5], kind: 'tag', tag });
       }
       last = m.index + m[0].length;
     }
@@ -105,6 +112,12 @@
         s.dataset.tag = p.tag;
         s.textContent = p.text;
         node.append(s);
+      } else if (p.kind === 'image') {
+        const img = document.createElement('img');
+        img.src = 'wn-attach://files/' + p.file;
+        img.alt = p.text;
+        img.loading = 'lazy';
+        node.append(img);
       } else {
         node.append(document.createTextNode(p.text));
       }

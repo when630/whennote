@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('whennote', {
   pin: (on) => ipcRenderer.invoke('capture:pin', on),
   openInMain: (body) => ipcRenderer.invoke('capture:openInMain', body),
   onReset: (cb) => ipcRenderer.on('capture:reset', () => cb()),
+  clipboardPeek: () => ipcRenderer.invoke('capture:clipboard'),
   // 메인 프로세스가 "저장하고 닫아라"를 시킬 때(blur, 창 닫기)
   onFlush: (cb) => ipcRenderer.on('capture:flush', () => cb()),
 
@@ -23,6 +24,11 @@ contextBridge.exposeInMainWorld('whennote', {
   // 고정 그룹 안에서 한 칸 위(-1)/아래(1)
   move: (id, dir) => ipcRenderer.invoke('note:move', id, dir),
   tags: () => ipcRenderer.invoke('tag:list'),
+  // 붙여넣은 이미지 → 파일 저장 → 본문에 넣을 마크다운
+  attach: (id, image) => ipcRenderer.invoke('note:attach', id, image),
+  dataExport: () => ipcRenderer.invoke('data:export'),
+  dataImport: () => ipcRenderer.invoke('data:import'),
+  dataExportMarkdown: () => ipcRenderer.invoke('data:exportMarkdown'),
   onChanged: (cb) => ipcRenderer.on('state:changed', () => cb()),
   onOpenNote: (cb) => ipcRenderer.on('note:open', (_e, id) => cb(id)),
 

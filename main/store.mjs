@@ -7,8 +7,10 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { toChoseong, parseQuery, splitTerms, ftsMatch, likePattern, makeSnippet } from './search.mjs';
 import { titleOf, extractTags, extractLinks } from './links.mjs';
+import { EXPORT_VERSION, validateExport } from './export.mjs';
 
 // 앱이 자신보다 높은 user_version의 DB를 만나면 열지 않는다(STOR-03) — 구버전으로 되돌린
 // 사용자가 최신 스키마에 실수로 쓰지 않게 막는 신호다.
@@ -504,23 +506,123 @@ export function createStore(file) {
   const restoreNote = (id) => setFlag('deleted_at', id, false);
 
   // 되돌릴 수 있는 창(30일)을 지난 삭제분을 실제로 비운다. 그 메모를 가리키던 링크는 다시
-  // 미해결(to_id NULL)이 되어 누르면 새 메모를 만드는 링크로 돌아간다.
+  // 미해결(to_id NULL)이 되어 누르면 새 메모를 만드는 링크로 돌아간다. 돌려주는 files는
+  // 함께 지워야 할 첨부 파일 이름들 — 파일 삭제는 호출부(jobs.mjs)가 attachments 모듈로 한다(STOR-04).
   function purgeDeleted(days = 30) {
-    if (!db || !state.ok) return 0;
+    if (!db || !state.ok) return { count: 0, files: [] };
     const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
     return withTransaction(db, () => {
       const ids = db.prepare('SELECT id FROM note WHERE deleted_at IS NOT NULL AND deleted_at < ?').all(cutoff).map((r) => r.id);
-      if (!ids.length) return 0;
+      if (!ids.length) return { count: 0, files: [] };
+      const files = [];
       const del = (sql) => db.prepare(sql);
       for (const id of ids) {
+        for (const r of del('SELECT file FROM attachment WHERE note_id = ?').all(id)) files.push(r.file);
         del('UPDATE note_link SET to_id = NULL WHERE to_id = ?').run(id);
         del('DELETE FROM note_link WHERE from_id = ?').run(id);
         del('DELETE FROM note_tag WHERE note_id = ?').run(id);
         del('DELETE FROM attachment WHERE note_id = ?').run(id);
         del('DELETE FROM note WHERE id = ?').run(id);
       }
-      return ids.length;
+      return { count: ids.length, files };
     });
+  }
+
+  // ── 첨부 (MAIN-08, STOR-04) — 파일은 attachments 모듈이, 여기는 어느 메모의 것인지만
+  function addAttachment(noteId, file) {
+    mustBeOpen();
+    const id = crypto.randomUUID();
+    db.prepare('INSERT INTO attachment (id, note_id, file, created_at) VALUES (?, ?, ?, ?)').run(id, noteId, file, now());
+    return id;
+  }
+
+  function attachmentFiles({ includeDeleted = true } = {}) {
+    mustBeOpen();
+    const sql = includeDeleted
+      ? 'SELECT file FROM attachment'
+      : 'SELECT a.file FROM attachment a JOIN note n ON n.id = a.note_id WHERE n.deleted_at IS NULL';
+    return db.prepare(sql).all().map((r) => r.file);
+  }
+
+  // ── 내보내기·가져오기 (DATA-01·02)
+  //
+  // 태그·링크 표는 본문에서 파생되므로 내보내지 않는다 — 가져올 때 다시 계산한다(D-02).
+  // 초성 컬럼도 같다. 사람이 읽을 파일에는 원본만 담는다.
+  function exportAll() {
+    mustBeOpen();
+    return {
+      app: 'whennote',
+      export_version: EXPORT_VERSION,
+      schema_version: MIGRATIONS.length,
+      exported_at: now(),
+      note: db
+        .prepare(
+          `SELECT id, body, created_at, updated_at, opened_at, pinned_at, pin_order, archived_at, deleted_at
+             FROM note ORDER BY created_at`
+        )
+        .all(),
+      attachment: db.prepare('SELECT id, note_id, file, created_at FROM attachment ORDER BY created_at').all(),
+      event: db.prepare('SELECT id, at, kind, detail FROM event ORDER BY at').all(),
+    };
+  }
+
+  // 가져오기 직전 현재 파일을 backups/ 에 복사한다(DATA-02). 이름은 이행 백업과 구분되게 reason을 넣는다.
+  function backupNow(reason = 'manual') {
+    mustBeOpen();
+    try {
+      db.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+      const dir = path.join(path.dirname(file), 'backups');
+      fs.mkdirSync(dir, { recursive: true });
+      const stamp = now().replace(/[:.]/g, '').replace('T', '-').slice(0, 15);
+      const dest = path.join(dir, `store-${reason}-${stamp}.sqlite`);
+      fs.copyFileSync(file, dest);
+      return path.basename(dest);
+    } catch {
+      return null;
+    }
+  }
+
+  // 지금 데이터를 파일의 내용으로 **갈아끼운다**. 두 단계: 메모를 전부 넣은 뒤 파생 색인을 다시
+  // 계산한다 — 링크는 대상 메모가 이미 있어야 to_id로 해석되기 때문이다.
+  function importAll(data) {
+    mustBeOpen();
+    const bad = validateExport(data, MIGRATIONS.length);
+    if (bad) throw new Error(bad);
+    const backup = backupNow('import');
+    withTransaction(db, () => {
+      for (const t of ['note_link', 'note_tag', 'attachment', 'event', 'note']) db.exec(`DELETE FROM ${t}`);
+      const ins = db.prepare(
+        `INSERT INTO note (id, body, title, title_cho, body_cho, created_at, updated_at, opened_at, pinned_at, pin_order, archived_at, deleted_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const n of data.note) {
+        const title = titleOf(n.body, n.created_at);
+        ins.run(
+          n.id, n.body, title, toChoseong(title), toChoseong(n.body),
+          n.created_at, n.updated_at ?? n.created_at, n.opened_at ?? n.updated_at ?? n.created_at,
+          n.pinned_at ?? null, n.pin_order ?? null, n.archived_at ?? null, n.deleted_at ?? null
+        );
+      }
+      for (const n of data.note) syncDerived(n.id, n.body, titleOf(n.body, n.created_at));
+      const ia = db.prepare('INSERT OR IGNORE INTO attachment (id, note_id, file, created_at) VALUES (?, ?, ?, ?)');
+      for (const a of data.attachment ?? []) ia.run(a.id, a.note_id, a.file, a.created_at ?? now());
+      const ie = db.prepare('INSERT INTO event (id, at, kind, detail) VALUES (?, ?, ?, ?)');
+      for (const e of data.event ?? []) ie.run(e.id ?? null, e.at, e.kind, e.detail ?? null);
+    });
+    return { backup, note: data.note.length, attachment: (data.attachment ?? []).length };
+  }
+
+  // 마크다운 내보내기용 — 지운 것을 뺀 전체 메모와 각 메모의 태그
+  function allNotes() {
+    mustBeOpen();
+    const notes = db.prepare(`SELECT ${NOTE_COLS} FROM note WHERE deleted_at IS NULL ORDER BY created_at`).all();
+    const tagRows = db.prepare('SELECT note_id, tag FROM note_tag ORDER BY tag').all();
+    const tags = new Map();
+    for (const r of tagRows) {
+      if (!tags.has(r.note_id)) tags.set(r.note_id, []);
+      tags.get(r.note_id).push(r.tag);
+    }
+    return notes.map((n) => ({ ...n, tags: tags.get(n.id) ?? [] }));
   }
 
   function count() {
@@ -557,6 +659,12 @@ export function createStore(file) {
     removeNote,
     restoreNote,
     purgeDeleted,
+    addAttachment,
+    attachmentFiles,
+    exportAll,
+    importAll,
+    backupNow,
+    allNotes,
     count,
     logEvent,
     schemaVersion: () => MIGRATIONS.length,

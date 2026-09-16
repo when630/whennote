@@ -258,7 +258,7 @@ test('소프트 삭제·복구·30일 뒤 정리, 정리되면 그 메모를 가
   raw.prepare("UPDATE note SET deleted_at = ? WHERE id = 'tgt'").run(at(-40 * 86400_000));
   raw.close();
   const again = createStore(file);
-  assert.equal(again.purgeDeleted(30), 1);
+  assert.equal(again.purgeDeleted(30).count, 1);
   assert.equal(again.getNote('tgt'), null);
   assert.equal(again.getNote('src').links[0].to_id, null);
   again.close();
@@ -317,5 +317,66 @@ test('v1 DB를 열면 v2로 이행되며 기존 고정 메모가 고정한 순�
   assert.deepEqual(store.searchNotes().items.map((i) => i.id), ['early', 'late']);
   const backups = fs.readdirSync(path.join(path.dirname(file), 'backups')).filter((f) => /^store-v1-\d{8}\.sqlite$/.test(f));
   assert.equal(backups.length, 1, '이행 직전 v1 백업이 하나 남는다');
+  store.close();
+});
+
+// ── 첨부·내보내기·가져오기 (MAIN-08, STOR-04, DATA-01·02)
+
+test('첨부는 메모에 묶이고, 메모가 정리되면 지울 파일 이름으로 돌아온다 (STOR-04)', () => {
+  const file = tmpFile();
+  const store = createStore(file);
+  seed(store, 'a', '그림 메모');
+  store.addAttachment('a', '11111111-1111-4111-8111-111111111111.png');
+  assert.deepEqual(store.attachmentFiles(), ['11111111-1111-4111-8111-111111111111.png']);
+  store.removeNote('a');
+  assert.deepEqual(store.attachmentFiles({ includeDeleted: false }), [], '지운 메모의 첨부는 산 것으로 치지 않는다');
+  store.close();
+  const raw = new DatabaseSync(file);
+  raw.prepare("UPDATE note SET deleted_at = ? WHERE id = 'a'").run(at(-40 * 86400_000));
+  raw.close();
+  const again = createStore(file);
+  assert.deepEqual(again.purgeDeleted(30), { count: 1, files: ['11111111-1111-4111-8111-111111111111.png'] });
+  assert.deepEqual(again.attachmentFiles(), []);
+  again.close();
+});
+
+test('exportAll → importAll 왕복: 메모·고정·아카이브·첨부가 같고 태그·링크·초성은 다시 계산된다 (DATA-02)', () => {
+  const a = createStore(tmpFile());
+  seed(a, 'tpl', '릴리즈 노트 템플릿\n형식', at(-3000));
+  seed(a, 'mtg', '주간 회의 #회의\n[[릴리즈 노트 템플릿]] 참고', at(-2000));
+  seed(a, 'gone', '지운 것', at(-1000));
+  a.setPinned('mtg', true);
+  a.setArchived('tpl', true);
+  a.removeNote('gone');
+  a.addAttachment('mtg', '11111111-1111-4111-8111-111111111111.png');
+  a.logEvent('test', 'x');
+  const data = a.exportAll();
+  assert.equal(data.app, 'whennote');
+  assert.equal(data.note.length, 3, '지운 메모도 내보낸다 — 30일 안이면 되돌릴 수 있어야 한다');
+  assert.ok(!('title_cho' in data.note[0]) && !('tags' in data.note[0]), '파생값은 내보내지 않는다');
+  a.close();
+
+  const bFile = tmpFile();
+  const b = createStore(bFile);
+  seed(b, 'old', '가져오기 전에 있던 것');
+  const out = b.importAll(JSON.parse(JSON.stringify(data)));
+  assert.equal(out.note, 3);
+  assert.match(out.backup, /^store-import-/);
+  assert.ok(fs.existsSync(path.join(path.dirname(bFile), 'backups', out.backup)), '가져오기 직전 백업이 남는다');
+  assert.equal(b.getNote('old'), null, '지금 데이터는 파일의 내용으로 갈아끼워진다');
+  assert.deepEqual(b.searchNotes().items.map((i) => i.id), ['mtg'], '아카이브·삭제는 기본 목록에서 빠진다');
+  assert.equal(b.searchNotes().items[0].pinned, true);
+  assert.deepEqual(b.searchNotes({ archived: true }).items.map((i) => i.id), ['tpl']);
+  assert.deepEqual(b.getNote('mtg').tags, ['회의'], '태그는 본문에서 다시 계산된다');
+  assert.equal(b.getNote('mtg').links[0].to_id, 'tpl', '링크는 대상이 들어온 뒤 해석된다');
+  assert.deepEqual(b.searchNotes({ q: 'ㅎㅇ' }).items.map((i) => i.id), ['mtg'], '초성 색인도 다시 만들어진다');
+  assert.deepEqual(b.attachmentFiles(), ['11111111-1111-4111-8111-111111111111.png']);
+  assert.equal(b.allNotes().length, 2, '마크다운 내보내기는 지운 것을 뺀다');
+  b.close();
+});
+
+test('importAll은 잘못된 파일을 백업도 만들기 전에 거절한다', () => {
+  const store = createStore(tmpFile());
+  assert.throws(() => store.importAll({ app: 'whenwork', note: [] }), /WHENNOTE가 내보낸 파일이 아닙니다/);
   store.close();
 });
