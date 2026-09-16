@@ -77,5 +77,5 @@ test('sniffImageExt는 MIME이 아니라 바이트로 형식을 가른다', asyn
   assert.equal(sniffImageExt(pad(Buffer.from('hello world'))), null);
   assert.equal(sniffImageExt(Buffer.from([1, 2])), null, '너무 짧으면 모른다');
   // 실제로 구운 아이콘도 png로 읽힌다
-  assert.equal(sniffImageExt(fs.readFileSync(path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..', 'build', 'icon.png'))), 'png');
+  assert.equal(sniffImageExt(fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'build', 'icon.png'))), 'png');
 });
