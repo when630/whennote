@@ -6,9 +6,9 @@ import { nativeImage } from 'electron';
 export default {
   name: 'win32',
 
-  // 퀵 메모는 Ctrl+N — 다른 앱의 '새 파일'과 겹치지만 사용자가 그 조합을 원했다(D-06 개정). 설정에서 바꿀 수 있다.
-  defaultHotkey: 'Control+N',
-  // 메인 창(검색·편집) 토글. 퀵 메모는 Ctrl+N, 메모 창은 Alt를 더한 Ctrl+Alt+N (2026-09-16 사용자 결정).
+  // 퀵 메모 Ctrl+Alt+M. Ctrl+N은 다른 앱의 '새 파일'과 겹쳐 물렸다(D-06 개정). 설정에서 바꿀 수 있다.
+  defaultHotkey: 'Control+Alt+M',
+  // 메인 창(검색·편집) 토글. 퀵 메모 Ctrl+Alt+M, 메모 창 Ctrl+Alt+N — 같은 손 모양, 글자만 다르다 (2026-09-16 사용자 결정).
   defaultMainHotkey: 'Control+Alt+N',
 
   // Windows NSIS는 서명 없이도 electron-updater가 내려받아 설치한다.
