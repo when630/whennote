@@ -1,6 +1,6 @@
 {
   "name": "whennote",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "description": "순수 메모 데스크톱 앱 — 단축키로 적고, 몇 글자로 다시 찾는다",
@@ -27,7 +27,14 @@
   "build": {
     "appId": "com.when630.whennote",
     "productName": "WHENNOTE",
-    "protocols": [{ "name": "WHENNOTE", "schemes": ["whennote"] }],
+    "protocols": [
+      {
+        "name": "WHENNOTE",
+        "schemes": [
+          "whennote"
+        ]
+      }
+    ],
     "files": [
       "main/**/*",
       "renderer/**/*",
