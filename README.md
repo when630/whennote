@@ -68,6 +68,7 @@ xattr -dr com.apple.quarantine /Applications/WHENNOTE.app
 | `Ctrl+Delete` | 선택한 메모 삭제 (30일 안에 되돌리기) |
 | `Ctrl+Shift+A` | 보관함 보기 |
 | `Ctrl+,` / `Ctrl+/` | 설정 / 전체 단축키 |
+| [WHENCOMMAND](https://github.com/when630/whencommand)에서 | `퀵 메모` · `메모 검색 회의록` · `새 메모` · `메모 창 열기` — 시리즈의 입력줄이 `whennote://`로 이 앱을 부릅니다. WHENCOMMAND가 없으면 아무 차이도 없습니다 |
 
 ## 상태
 

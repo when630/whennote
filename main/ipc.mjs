@@ -230,11 +230,15 @@ export function registerIpc(ctx) {
     // 퀵캡처 Ctrl+Enter가 남긴 "이 메모를 열어라". 한 번 읽어 가면 비운다.
     const openNoteId = ctx.openNoteId ?? null;
     ctx.openNoteId = null;
+    // 딥링크 whennote://search?q= 가 창이 뜨기 전에 남긴 검색어(D-13). 마찬가지로 한 번 읽어 가면 비운다.
+    const pendingQuery = ctx.pendingQuery ?? null;
+    ctx.pendingQuery = null;
     const notice = ctx.pendingNotice;
     ctx.pendingNotice = null;
     return {
       ok: true,
       openNoteId,
+      pendingQuery,
       notice,
       pending: ctx.pending,
       hotkey: ctx.hotkey ?? platform.defaultHotkey,

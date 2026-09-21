@@ -27,6 +27,7 @@
   "build": {
     "appId": "com.when630.whennote",
     "productName": "WHENNOTE",
+    "protocols": [{ "name": "WHENNOTE", "schemes": ["whennote"] }],
     "files": [
       "main/**/*",
       "renderer/**/*",

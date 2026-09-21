@@ -761,6 +761,12 @@ window.whennote.onChanged(() => {
 });
 // 퀵캡처 Ctrl+Enter로 넘어온 메모 — 이어서 적으러 온 것이니 편집 모드
 window.whennote.onOpenNote((id) => openNote(id, { edit: true }));
+// 딥링크 whennote://search?q= (D-13) — 검색창에 넣고 바로 찾는다. 빈 문자열이면 검색창만 비워 포커스
+window.whennote.onSearch((q) => {
+  els.q.value = q ?? '';
+  runSearch(els.q.value);
+  els.q.focus();
+});
 // 보기 모드에서 본문을 두 번 누르면 편집으로
 els.preview.addEventListener('dblclick', (e) => {
   if (e.target.closest?.('a')) return;
@@ -784,7 +790,9 @@ window.addEventListener('focus', () => {
     else if (init.store && !init.store.ok) text(els.notice, init.store.notice ?? '저장소를 열지 못했습니다');
   }
   setPreview(true);
-  await runSearch('');
+  const pendingQuery = init.ok && init.pendingQuery ? init.pendingQuery : ''; // 창이 뜨기 전에 온 딥링크 검색어(D-13)
+  if (pendingQuery) els.q.value = pendingQuery;
+  await runSearch(pendingQuery);
   loadTags();
   if (init.ok && init.openNoteId) await openNote(init.openNoteId, { edit: true });
   else els.q.focus();

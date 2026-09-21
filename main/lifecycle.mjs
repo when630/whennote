@@ -13,6 +13,8 @@ import { pickPosition } from './place.mjs';
 import { scheduleJobs } from './jobs.mjs';
 import { registerIpc, saveCapture } from './ipc.mjs';
 import { setupUpdater, updateLine } from './update.mjs';
+import { SCHEME, APP_ID as LINK_ID, parseDeepLink, fromArgv, buildManifest } from './deeplink.mjs';
+import os from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
@@ -140,7 +142,17 @@ export function bootstrap() {
   // --shot은 메모를 만들고 이미지를 붙이므로 자기 폴더 안에 데이터를 둔다 — 일반 스모크 폴더를 더럽히지 않게
   if (SMOKE) app.setPath('userData', SMOKE_DATA || (SHOT_DIR ? path.join(SHOT_DIR, 'data') : path.join(app.getPath('temp'), 'whennote-smoke')));
 
+  // 딥링크 스킴(D-13, when-protocol). 패키징본은 electron-builder의 build.protocols가 OS에 등록해 두지만, 개발 실행은
+  // electron.exe와 앱 경로를 함께 넘겨야 OS가 이 프로젝트로 연다. 스모크는 시스템 설정을 건드리지 않는다.
+  if (!SMOKE) {
+    try {
+      if (app.isPackaged) app.setAsDefaultProtocolClient(SCHEME);
+      else app.setAsDefaultProtocolClient(SCHEME, process.execPath, [path.resolve(process.argv[1])]);
+    } catch {}
+  }
+
   // app.quit()은 비동기 종료 요청일 뿐이다 — 여기서 멈춰 트레이·저장소·IPC를 만들지 않는다.
+  // 두 번째 인스턴스는 argv에 딥링크를 싣고 온다(Windows/Linux) — 첫 인스턴스가 받아 처리한다.
   if (!SMOKE && !app.requestSingleInstanceLock()) {
     app.quit();
     return ctx;
@@ -291,6 +303,55 @@ export function bootstrap() {
   }
   ctx.toggleMain = toggleMain;
 
+  // ── 형제 앱 연동(D-13) — WHENCOMMAND가 whennote://<명령>?<인자> 로 부른다. 모르는 URL은 조용히 무시한다.
+  function handleDeepLink(raw) {
+    const link = parseDeepLink(raw);
+    if (!link) return false;
+    const { command, args } = link;
+    if (command === 'open') showMain();
+    else if (command === 'search') {
+      const win = getMainWin();
+      // 창이 아직 로딩 중이면 push가 사라진다 — 상태에 실어 두고 app:init이 읽어 간다(openNoteId와 같은 길)
+      if (win.webContents.isLoading()) ctx.pendingQuery = args.q ?? '';
+      else win.webContents.send('note:search', args.q ?? '');
+      showMain();
+    } else if (command === 'new') {
+      const res = args.text ? saveCapture(ctx, args.text) : null;
+      showMain(res?.id ?? null);
+    } else if (command === 'capture') {
+      const win = getCaptureWin();
+      showCapture(); // capture:reset이 먼저 간다 — 그 뒤에 채운다
+      if (args.text) {
+        const send = () => win.webContents.send('capture:prefill', args.text);
+        if (win.webContents.isLoading()) win.webContents.once('did-finish-load', send);
+        else send();
+      }
+    }
+    return true;
+  }
+  ctx.handleDeepLink = handleDeepLink;
+
+  // 매니페스트 — 실행될 때마다 덮어쓴다. 실패해도 앱은 멈추지 않는다: 연동은 더해지는 것이지 전제가 아니다.
+  function writeManifest() {
+    if (SMOKE) return;
+    try {
+      const dir = path.join(os.homedir(), '.when', 'apps');
+      fs.mkdirSync(dir, { recursive: true });
+      const manifest = buildManifest({ platformName: platform.name, exePath: app.getPath('exe'), packaged: app.isPackaged });
+      fs.writeFileSync(path.join(dir, `${LINK_ID}.json`), JSON.stringify(manifest, null, 2) + '\n', 'utf8');
+    } catch {}
+  }
+
+  app.on('second-instance', (_e, argv) => {
+    const url = fromArgv(argv);
+    if (!url || !handleDeepLink(url)) showMain(); // 딥링크가 아니면 사용자가 앱을 한 번 더 실행한 것 — 창을 보여 준다
+  });
+  app.on('open-url', (e, url) => {
+    e.preventDefault(); // macOS — ready 전에도 올 수 있다
+    if (app.isReady()) handleDeepLink(url);
+    else ctx.pendingDeepLink = url;
+  });
+
   // ── 트레이
   function storeStatusLine() {
     const st = ctx.store.status();
@@ -413,6 +474,13 @@ export function bootstrap() {
     const failed = [!ctx.hotkeyOk && `퀵 메모 ${platform.hotkeyLabel(ctx.hotkey)}`, !ctx.mainHotkeyOk && `메모 창 ${platform.hotkeyLabel(ctx.mainHotkey)}`].filter(Boolean);
     if (failed.length) {
       ctx.notify('단축키를 등록하지 못했습니다', `${failed.join(', ')} 를 다른 앱이 쓰고 있습니다 — 설정에서 다른 조합으로 바꿔 주세요`);
+    }
+    // 형제 앱 연동(D-13): 명령 목록을 떨어뜨리고, 첫 실행의 argv(Windows)나 ready 전에 온 open-url(macOS)에 딥링크가 있으면 처리한다
+    writeManifest();
+    if (!SMOKE) {
+      const first = fromArgv(process.argv) ?? ctx.pendingDeepLink;
+      ctx.pendingDeepLink = null;
+      if (first) handleDeepLink(first);
     }
     setupUpdater(ctx);
     if (CHECK_UPDATE) {

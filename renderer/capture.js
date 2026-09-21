@@ -85,6 +85,13 @@ window.whennote.onReset(() => {
   input.focus();
   suggestClipboard();
 });
+// 딥링크 whennote://capture?text= (D-13) — reset 뒤에 온다. 글을 넣고 커서를 끝에, 클립보드 제안은 접는다
+window.whennote.onPrefill((text) => {
+  input.value = String(text ?? '');
+  input.setSelectionRange(input.value.length, input.value.length);
+  clipBox.hidden = true;
+  input.focus();
+});
 input.addEventListener('input', () => {
   clipBox.hidden = true; // 적기 시작하면 제안은 사라진다
 });

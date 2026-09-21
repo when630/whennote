@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld('whennote', {
   clipboardPeek: () => ipcRenderer.invoke('capture:clipboard'),
   // 메인 프로세스가 "저장하고 닫아라"를 시킬 때(blur, 창 닫기)
   onFlush: (cb) => ipcRenderer.on('capture:flush', () => cb()),
+  // 딥링크 whennote://capture?text= 가 넘긴 글(D-13) — reset 뒤에 온다
+  onPrefill: (cb) => ipcRenderer.on('capture:prefill', (_e, text) => cb(text)),
 
   // ── 메인 창
   init: () => ipcRenderer.invoke('app:init'),
@@ -31,6 +33,8 @@ contextBridge.exposeInMainWorld('whennote', {
   dataExportMarkdown: () => ipcRenderer.invoke('data:exportMarkdown'),
   onChanged: (cb) => ipcRenderer.on('state:changed', () => cb()),
   onOpenNote: (cb) => ipcRenderer.on('note:open', (_e, id) => cb(id)),
+  // 딥링크 whennote://search?q= — 창이 이미 떠 있을 때(D-13). 로딩 중이면 app:init의 pendingQuery로 온다
+  onSearch: (cb) => ipcRenderer.on('note:search', (_e, q) => cb(q)),
 
   // ── 설정·업데이트
   settingsGet: () => ipcRenderer.invoke('settings:get'),
