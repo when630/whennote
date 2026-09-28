@@ -213,6 +213,9 @@ export function bootstrap() {
     });
     // 기본 레벨(floating)은 Windows에서 작업 표시줄 뒤로 가라앉는다 — pop-up-menu부터가 그 위다
     ctx.captureWin.setAlwaysOnTop(true, 'pop-up-menu');
+    // Electron 기본 메뉴를 뗀다 — 메뉴가 있으면 Windows에서 Alt 한 번에 메뉴바가 떠 단축키 잡기 중 Alt 조합을 가로챈다(2026-09-28).
+    // setMenu는 Windows·Linux 전용이라 옵셔널 호출 — macOS는 앱 메뉴를 쓰므로 건드리지 않는다
+    ctx.captureWin.setMenu?.(null);
     rememberPosition(ctx.captureWin, 'captureBounds');
     ctx.captureWin.on('resized', () => {
       const [, height] = ctx.captureWin.getSize();
@@ -261,6 +264,7 @@ export function bootstrap() {
       autoHideMenuBar: true,
       webPreferences: { preload },
     });
+    ctx.mainWin.setMenu?.(null); // 위 captureWin과 같은 이유
     rememberPosition(ctx.mainWin, 'mainBounds');
     ctx.mainWin.on('resized', () => {
       const [width, height] = ctx.mainWin.getSize();
