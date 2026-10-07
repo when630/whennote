@@ -185,7 +185,8 @@ export function bootstrap() {
 
   function rememberPosition(win, key) {
     const save = () => {
-      if (win.isDestroyed() || !win.isVisible()) return;
+      // 최소화 중의 자리는 화면 밖(-32000)이다 — 숨길 때 minimize를 거치므로(D-14) 그 값을 적으면 안 된다
+      if (win.isDestroyed() || !win.isVisible() || win.isMinimized()) return;
       const [x, y] = win.getPosition();
       ctx.settings.set(key, { x, y });
     };
@@ -239,10 +240,9 @@ export function bootstrap() {
 
   function showCapture() {
     const win = getCaptureWin();
-    placeWindow(win, 'captureBounds', { centerY: false });
     win.webContents.send('capture:reset');
-    win.show();
-    win.focus();
+    // 숨길 때 minimize를 거쳤으니(D-14) restore→자리→show→focus 순서는 platform이 안다 — 최소화 중의 setPosition은 버려진다
+    platform.activate(win, () => placeWindow(win, 'captureBounds', { centerY: false }));
   }
   ctx.showCapture = showCapture;
 
@@ -277,7 +277,7 @@ export function bootstrap() {
     ctx.mainWin.on('close', (e) => {
       if (!ctx.quitting) {
         e.preventDefault();
-        ctx.mainWin.hide();
+        platform.deactivate(ctx.mainWin); // 닫기는 숨기기 — 직전 창으로 포커스가 돌아가게(D-14)
       }
     });
     return ctx.mainWin;
@@ -292,16 +292,14 @@ export function bootstrap() {
       if (win.webContents.isLoading()) ctx.openNoteId = openId;
       else win.webContents.send('note:open', openId);
     }
-    placeWindow(win, 'mainBounds');
-    win.show();
-    win.focus();
+    platform.activate(win, () => placeWindow(win, 'mainBounds')); // D-14 — 자리는 restore 뒤에
   }
   ctx.showMain = showMain;
 
   const TOGGLE_GRACE_MS = 400;
   function toggleMain() {
     const win = getMainWin();
-    if (win.isVisible() && win.isFocused()) return win.hide();
+    if (win.isVisible() && win.isFocused()) return platform.deactivate(win); // 직전 창으로 포커스가 돌아가게(D-14)
     if (Date.now() - ctx.mainHiddenAt < TOGGLE_GRACE_MS) return;
     showMain();
   }

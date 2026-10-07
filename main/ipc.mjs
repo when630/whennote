@@ -345,8 +345,10 @@ export function registerIpc(ctx) {
     }
   });
 
+  // Esc·헤더 ×·퀵캡처 flush가 부른다. 숨기는 순서는 platform이 안다(D-14) — Windows는 minimize를 거쳐야 직전 창에 포커스가 돌아온다
   ipcMain.on('win:hide', (e) => {
-    BrowserWindow.fromWebContents(e.sender)?.hide();
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (win && !win.isDestroyed()) platform.deactivate(win);
   });
   ipcMain.on('win:minimize', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.minimize();
