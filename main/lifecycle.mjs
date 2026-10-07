@@ -24,6 +24,7 @@ const MAIN_H = 720;
 const MAIN_MIN_W = 800;
 const MAIN_MIN_H = 520;
 const CAPTURE_W = 380; // 퀵캡처 — 가로 고정, 세로만 조절(D-05)
+const BLUR_SETTLE_MS = 120; // blur 뒤 포커스를 되묻기까지 — restore→show→focus 사이에 끼어드는 가짜 blur를 거른다(D-14 보강)
 const CAPTURE_H = 320;
 const CAPTURE_MIN_H = 240;
 const CAPTURE_MAX_H = 800;
@@ -225,8 +226,18 @@ export function bootstrap() {
     ctx.captureWin.loadFile(path.join(ROOT, 'renderer', 'capture.html'));
     // 다른 데 클릭하면 저장하고 접는다 — 항상-위가 켜져 있으면 그대로 둔다(CAP-06).
     // 실제 저장은 렌더러가 한다(본문을 렌더러가 갖고 있다): flush를 받으면 save 후 hide를 부른다.
+    //
+    // 단, 바로 접지 않고 잠깐 뒤에 되묻는다(D-14 보강, 2026-10-07). Windows에서 minimize를 거쳐 숨긴 창을
+    // restore→show→focus로 되살리면 활성화가 두 번 일어나며 그 사이에 blur가 한 번 끼어든다. 0.1.3 설치본은 그 blur를
+    // "다른 데를 눌렀다"로 읽어 **퀵캡처가 잠깐 떴다가 바로 사라졌다**(사용자 보고). WHENCOMMAND가 멀쩡했던 것은 blur 핸들러가
+    // 보이기 중(opacity 0)을 거르기 때문이다. BLUR_SETTLE_MS 뒤에도 포커스가 없을 때만 진짜 이탈이다
     ctx.captureWin.on('blur', () => {
-      if (!ctx.capturePinned && !ctx.quitting) ctx.captureWin.webContents.send('capture:flush');
+      setTimeout(() => {
+        const win = ctx.captureWin;
+        if (!win || win.isDestroyed() || ctx.capturePinned || ctx.quitting) return;
+        if (!win.isVisible() || win.isFocused()) return;
+        win.webContents.send('capture:flush');
+      }, BLUR_SETTLE_MS);
     });
     ctx.captureWin.on('close', (e) => {
       if (!ctx.quitting) {
