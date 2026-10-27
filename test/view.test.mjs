@@ -78,7 +78,17 @@ test('parse는 제목·목록·인용·코드 블록·문단을 나누고, 체�
   assert.equal(items[0].checked, null);
   assert.equal(blocks[3].lang, 'js');
   assert.deepEqual(blocks[3].lines, ['const a = 1;']);
-  assert.equal(blocks[4].parts.map((p) => p.text).join(''), '문단 하나 이어지는 줄');
+  assert.deepEqual(blocks[4].parts.map((p) => p.kind ?? p.text), ['문단 하나', 'br', '이어지는 줄']);
+});
+
+test('문단 안의 줄바꿈은 줄바꿈으로 남고, 빈 줄은 문단을 나눈다 — 보기 모드가 쓴 그대로 보여야 한다', () => {
+  const blocks = parse('첫 줄\n둘째 줄\n\n새 문단\n- 항목\n목록 뒤');
+  assert.deepEqual(
+    blocks.map((b) => b.type),
+    ['para', 'para', 'list', 'para']
+  );
+  assert.deepEqual(blocks[0].parts.map((p) => p.kind ?? p.text), ['첫 줄', 'br', '둘째 줄']);
+  assert.equal(blocks[3].parts.length, 1, '목록 뒤 문단은 목록 앞 문단에 붙지 않는다');
 });
 
 test('닫히지 않은 코드 블록도 잃지 않고 보여준다', () => {

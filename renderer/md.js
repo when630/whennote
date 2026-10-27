@@ -68,9 +68,11 @@
     const blocks = [];
     let list = null;
     let code = null;
+    let para = null; // 열려 있는 문단 — 빈 줄이나 다른 블록이 오면 닫힌다
     const flush = () => {
       if (list) blocks.push(list);
       list = null;
+      para = null;
     };
 
     const lines = String(src ?? '').split('\n');
@@ -122,10 +124,10 @@
         });
         continue;
       }
-      flush();
-      const prev = blocks[blocks.length - 1];
-      if (prev?.type === 'para') prev.parts.push({ text: ' ' }, ...inline(line));
-      else blocks.push({ type: 'para', parts: inline(line) });
+      if (list) flush();
+      // 메모는 쓴 줄바꿈이 곧 의도다 — 마크다운식으로 공백으로 잇지 않고 줄을 그대로 끊는다
+      if (para) para.parts.push({ text: '', kind: 'br' }, ...inline(line));
+      else blocks.push((para = { type: 'para', parts: inline(line) }));
     }
     if (code) blocks.push(code); // 닫히지 않은 코드 블록도 그대로 보여준다
     flush();
@@ -134,7 +136,8 @@
 
   function fill(node, parts) {
     for (const p of parts) {
-      if (p.kind === 'bold') node.append(Object.assign(document.createElement('strong'), { textContent: p.text }));
+      if (p.kind === 'br') node.append(document.createElement('br'));
+      else if (p.kind === 'bold') node.append(Object.assign(document.createElement('strong'), { textContent: p.text }));
       else if (p.kind === 'italic') node.append(Object.assign(document.createElement('em'), { textContent: p.text }));
       else if (p.kind === 'strike') node.append(Object.assign(document.createElement('s'), { textContent: p.text }));
       else if (p.kind === 'code') node.append(Object.assign(document.createElement('code'), { textContent: p.text }));
